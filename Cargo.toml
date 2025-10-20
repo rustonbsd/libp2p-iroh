@@ -13,12 +13,14 @@ edition = "2024"
 
 [dependencies]
 libp2p-core = "0.43"
+libp2p-identity = "0.2"
 tokio = { version = "1", default-features = false, features = ["rt-multi-thread","macros"] }
 tokio-util = { version = "0.7" }
 iroh = { version =  "0.93", default-features = false }
-actor-helper = { version = "0.2.0", features = ["tokio"] }
+rand = "0.9"
 
 futures = "0.3"
+futures-timer = "3.0.3"
 
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
