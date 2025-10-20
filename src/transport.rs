@@ -1,11 +1,13 @@
-use std::{error::Error, fmt::Display, sync::Arc};
+use std::{collections::HashMap, error::Error, fmt::Display, sync::Arc};
 
-use futures::{channel::oneshot, future::BoxFuture};
+use futures::{channel::oneshot, executor::block_on, future::{select, BoxFuture}, stream::SelectAll, FutureExt};
+use futures_timer::Delay;
 use iroh::{
     protocol::{self, DynProtocolHandler, ProtocolHandler}, NodeId
 };
+use libp2p_core::transport::memory::Listener;
 use rand::rand_core::le;
-use tokio::sync::{mpsc::{UnboundedReceiver, UnboundedSender}};
+use tokio::sync::{mpsc::{UnboundedReceiver, UnboundedSender}, Mutex};
 
 
 use crate::{connection::{Connecting, Connection}, helper};
@@ -16,11 +18,16 @@ pub struct Transport {
     pub(crate) node_id: iroh::NodeId,
     pub(crate) peer_id: libp2p_core::PeerId,
 
-    transport_events_rx: UnboundedReceiver<libp2p_core::transport::TransportEvent<Connecting, TransportError>>,
-    transport_events_tx: UnboundedSender<libp2p_core::transport::TransportEvent<Connecting, TransportError>>,
+    pub timeout: std::time::Duration,
+
     new_conns_tx: UnboundedSender<iroh::endpoint::Connection>,
     _new_conns_rx: Option<UnboundedReceiver<iroh::endpoint::Connection>>,
-    transport_protocol: Option<TransportProtocol>,
+
+    transport_protocols: HashMap<libp2p_core::transport::ListenerId, TransportProtocol>,
+    transport_events_rx: UnboundedReceiver<libp2p_core::transport::TransportEvent<Connecting, TransportError>>,
+    transport_events_tx: UnboundedSender<libp2p_core::transport::TransportEvent<Connecting, TransportError>>,
+
+
 }
 
 #[derive(Debug, Clone)]
@@ -28,6 +35,7 @@ pub struct TransportProtocol {
     new_conns_rx: Arc<UnboundedReceiver<iroh::endpoint::Connection>>,
     _new_conns_tx: UnboundedSender<iroh::endpoint::Connection>,
     _router: Option<iroh::protocol::Router>,
+    endpoint: iroh::Endpoint,
 }
 
 #[derive(Clone, Debug)]
@@ -64,8 +72,6 @@ impl From<&str> for TransportError {
 }
 
 impl Transport {
-    const ALPN: &'static [u8] = b"/iroh/libp2p-transport/0.0.1";
-
     pub async fn new(keypair: Option<&libp2p_identity::Keypair>) -> Result<Self, TransportError> {
         let (new_conns_tx, new_conns_rx) = tokio::sync::mpsc::unbounded_channel();
         let (transport_events_tx, transport_events_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -88,17 +94,19 @@ impl Transport {
         Ok(Self {
             new_conns_tx,
             _new_conns_rx: Some(new_conns_rx),
-            transport_protocol: None,
+            transport_protocols: HashMap::new(),
             transport_events_tx,
             transport_events_rx,
             secret_key: secret_key.clone(),
             node_id: secret_key.public(),
             peer_id,
+            timeout: std::time::Duration::from_secs(20),
         })
     }
 }
 
 impl TransportProtocol {
+    const ALPN: &'static [u8] = b"/iroh/libp2p-transport/0.0.1";
     pub(in crate::transport) fn set_router(&mut self, router: iroh::protocol::Router) {
         self._router = Some(router);
     }
@@ -144,30 +152,32 @@ impl libp2p_core::Transport for Transport {
                 new_conns_rx: Arc::new(new_conns_rx),
                 _new_conns_tx: new_conns_tx.clone(),
                 _router: None,
+                endpoint: endpoint.clone(),
             };
 
             protocol.set_router(
-                iroh::protocol::Router::builder(endpoint.clone())
-                    .accept(Transport::ALPN, protocol.clone())
+                iroh::protocol::Router::builder(endpoint)
+                    .accept(TransportProtocol::ALPN, protocol.clone())
                     .spawn(),
             );
             
             let _ = waiter_tx.send(protocol).await;
-
             let _ = transport_events_tx.send(libp2p_core::transport::TransportEvent::NewAddress { listener_id: id, listen_addr: iroh_addr });
 
             Ok::<(), TransportError>(())
         });
         
-        if let Some(protocol) = waiter_rx.blocking_recv() {
-            self.transport_protocol = Some(protocol);
-        }
+        let protocol = waiter_rx.blocking_recv()
+            .ok_or_else(|| libp2p_core::transport::TransportError::Other(TransportError {
+                kind: TransportErrorKind::Listen("Failed to receive transport protocol".to_string()),
+            }))?;
+        self.transport_protocols.insert(id, protocol);
         
         Ok(())
     }
 
     fn remove_listener(&mut self, id: libp2p_core::transport::ListenerId) -> bool {
-        todo!()
+        self.transport_protocols.remove(&id).is_some()
     }
 
     fn dial(
@@ -175,7 +185,20 @@ impl libp2p_core::Transport for Transport {
         addr: libp2p_core::Multiaddr,
         opts: libp2p_core::transport::DialOpts,
     ) -> Result<Self::Dial, libp2p_core::transport::TransportError<Self::Error>> {
-        todo!()
+
+        let node_id = helper::multiaddr_to_iroh_node_id(&addr)
+            .ok_or_else(|| libp2p_core::transport::TransportError::Other(TransportError {
+                kind: TransportErrorKind::Dial("Failed to extract iroh NodeId from multiaddr".to_string()),
+            }))?;
+        let protocol = self.transport_protocols.values().next()
+            .ok_or_else(|| libp2p_core::transport::TransportError::Other(TransportError {
+                kind: TransportErrorKind::Dial("No transport protocol available".to_string()),
+            }))?.clone();
+
+        let conn = protocol.endpoint.connect(node_id, TransportProtocol::ALPN);
+
+        // Stupid connecting is stupid
+        Ok(conn.boxed())
     }
 
     fn poll(

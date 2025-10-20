@@ -67,7 +67,7 @@ pub struct Connection {
 }
 
 pub struct Connecting {
-    connecting: Select<BoxFuture<'static, iroh::endpoint::Connection>, Delay>,
+    connecting: BoxFuture<'static, Result<iroh::endpoint::Connection, TransportError>>,
 }
 
 impl StreamMuxer for Connection {
@@ -139,16 +139,15 @@ impl StreamMuxer for Connection {
 impl Future for Connecting {
     type Output = Result<Connection, TransportError>;
 
-    fn poll(self: Pin<&mut Self>, _cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
-        let connection = match futures::ready!(self.get_mut().connecting.poll_unpin(_cx)) {
-            futures::future::Either::Right(_) => {
-                return Poll::Ready(Err(TransportError::from("Connection timed out")));
-            }
-            futures::future::Either::Left((connection, _)) => connection,
+    fn poll(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+        let conn = match self.connecting.poll_unpin(cx) {
+            Poll::Ready(Ok(conn)) => conn,
+            Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
+            Poll::Pending => return Poll::Pending,
         };
 
         let muxer = Connection {
-            connection,
+            connection: conn,
             incoming: None,
             outgoing: None,
             closing: None,
