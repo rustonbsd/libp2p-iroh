@@ -1,7 +1,7 @@
 use futures::StreamExt;
 use libp2p::StreamProtocol;
-use libp2p_core::{Multiaddr, Transport as CoreTransport, muxing::StreamMuxerBox, upgrade};
-use libp2p_kad::{Behaviour as Kademlia, Config as KademliaConfig, Event as KademliaEvent, store::MemoryStore};
+use libp2p_core::{Multiaddr, Transport as CoreTransport, muxing::StreamMuxerBox};
+use libp2p_kad::{Behaviour as Kademlia, Event as KademliaEvent, store::MemoryStore};
 use libp2p_swarm::{NetworkBehaviour, Swarm, SwarmEvent};
 use std::io::{self, BufRead, Write};
 use std::str::FromStr;
@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("libp2p_iroh=debug,swarm_dht=debug")),
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("libp2p_iroh=warn,swarm_dht=warn")),
         )
         .init();
 
@@ -54,13 +54,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     swarm.listen_on(Multiaddr::empty())?;
 
     println!("Swarm started. Enter commands:");
-    println!("  <multiaddr> - Dial a peer");
-    println!("  bootstrap   - Bootstrap the DHT");
+    println!("  <multiaddr>     - Dial a peer (/p2p/...)");
+    println!("  put <key> <val> - Store a key-value pair in the DHT");
+    println!("  get <key>       - Retrieve a value from the DHT");
+    println!("  peers           - Display all known peers in routing table");
     println!();
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
 
-    let input_handle = tokio::spawn(async move {
+    tokio::spawn(async move {
         let stdin = io::stdin();
         let mut handle = stdin.lock();
         loop {
@@ -93,7 +95,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     println!("Inbound request: {request:?}");
                                 }
                                 KademliaEvent::OutboundQueryProgressed { result, .. } => {
-                                    println!("Query progressed: {result:?}");
+                                    match result {
+                                        libp2p_kad::QueryResult::GetRecord(Ok(libp2p_kad::GetRecordOk::FoundRecord(peer_record))) => {
+                                            let key_str = String::from_utf8_lossy(peer_record.record.key.as_ref());
+                                            let val_str = String::from_utf8_lossy(&peer_record.record.value);
+                                            println!("Found record: {key_str} = {val_str}");
+                                        }
+                                        libp2p_kad::QueryResult::GetRecord(Err(e)) => {
+                                            eprintln!("Get record failed: {e:?}");
+                                        }
+                                        libp2p_kad::QueryResult::PutRecord(Ok(libp2p_kad::PutRecordOk { key })) => {
+                                            let key_str = String::from_utf8_lossy(key.as_ref());
+                                            println!("Successfully stored key '{key_str}' in DHT");
+                                        }
+                                        libp2p_kad::QueryResult::PutRecord(Err(e)) => {
+                                            eprintln!("Put record failed: {e:?}");
+                                        }
+                                        libp2p_kad::QueryResult::Bootstrap(Ok(libp2p_kad::BootstrapOk { peer, num_remaining })) => {
+                                            println!("Bootstrap progress: {peer}, {num_remaining} remaining");
+                                        }
+                                        libp2p_kad::QueryResult::Bootstrap(Err(e)) => {
+                                            eprintln!("Bootstrap failed: {e:?}");
+                                        }
+                                        _ => {
+                                            println!("Query progressed: {result:?}");
+                                        }
+                                    }
                                 }
                                 _ => {}
                             }
@@ -119,11 +146,56 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             Some(cmd) = rx.recv() => {
-                if cmd == "bootstrap" {
-                    if let Err(e) = swarm.behaviour_mut().kademlia.bootstrap() {
-                        eprintln!("Bootstrap error: {e}");
+                let parts: Vec<&str> = cmd.split_whitespace().collect();
+                
+                if cmd == "peers" {
+                    let mut peer_count = 0;
+                    println!("Known peers in routing table:");
+                    
+                    for kbucket in swarm.behaviour_mut().kademlia.kbuckets() {
+                        for entry in kbucket.iter() {
+                            peer_count += 1;
+                            let peer_id = entry.node.key.preimage();
+                            let status = entry.status;
+                            println!("  {peer_id} (status: {status:?})");
+                            
+                            // Show addresses for this peer
+                            for addr in entry.node.value.iter() {
+                                println!("    └─ {addr}");
+                            }
+                        }
+                    }
+                    
+                    if peer_count == 0 {
+                        println!("  No peers in routing table");
                     } else {
-                        println!("Bootstrap initiated");
+                        println!("Total peers: {peer_count}");
+                    }
+                    
+                    // Also show connected peers
+                    let connected: Vec<_> = swarm.connected_peers().collect();
+                    println!("\nCurrently connected peers: {}", connected.len());
+                    for peer in connected {
+                        println!("  {peer}");
+                    }
+                } else if parts.len() == 2 && parts[0] == "get" {
+                    let key = parts[1].as_bytes().to_vec();
+                    let key_str = String::from_utf8_lossy(&key);
+                    println!("Looking up key '{key_str}' in DHT...");
+                    swarm.behaviour_mut().kademlia.get_record(libp2p_kad::RecordKey::new(&key));
+                } else if parts.len() == 3 && parts[0] == "put" {
+                    let key = parts[1].as_bytes().to_vec();
+                    let value = parts[2].as_bytes().to_vec();
+                    let record = libp2p_kad::Record::new(key.clone(), value);
+                    
+                    match swarm.behaviour_mut().kademlia.put_record(record, libp2p_kad::Quorum::One) {
+                        Ok(_) => {
+                            let key_str = String::from_utf8_lossy(&key);
+                            println!("Storing key '{key_str}' in DHT");
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to put record: {e}");
+                        }
                     }
                 } else if let Ok(addr) = Multiaddr::from_str(&cmd) {
                     println!("Dialing: {addr}");
@@ -132,6 +204,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 } else {
                     eprintln!("Unknown command: {cmd}");
+                    eprintln!("Available commands: put <key> <val>, get <key>, get_all, peers, <multiaddr>");
                 }
             }
         }
