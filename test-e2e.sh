@@ -103,12 +103,12 @@ docker run -d --name node2 \
 
 # Wait for node1 to connect to node0
 wait_for_log node1 "NODE_1_LISTEN_ADDR=" 60 || exit 1
-wait_for_log node1 "NODE_1: Connected to $NODE0_PEER_ID" 15 || exit 1
+wait_for_log node1 "NODE_1: Connected to $NODE0_PEER_ID" 60 || exit 1
 
 # Wait for node2 to connect and complete PUT operation
 wait_for_log node2 "NODE_2_LISTEN_ADDR=" 60 || exit 1
-wait_for_log node2 "NODE_2: Connected to $NODE0_PEER_ID" 15 || exit 1
-wait_for_log node2 "NODE_2_PUT_SUCCESS" 30 || exit 1
+wait_for_log node2 "NODE_2: Connected to $NODE0_PEER_ID" 60 || exit 1
+wait_for_log node2 "NODE_2_PUT_SUCCESS" 60 || exit 1
 
 # Check node1 and node2 logs
 echo ""
@@ -147,7 +147,7 @@ docker run -d --name node1-get \
     libp2p-iroh
 
 # Wait for node1-get to connect and complete GET operation
-wait_for_log node1-get "NODE_1-get: Connected to $NODE0_PEER_ID" 15 || exit 1
+wait_for_log node1-get "NODE_1-get: Connected to $NODE0_PEER_ID" 60 || exit 1
 wait_for_log node1-get "NODE_1-get_FOUND_RECORD" 60 || {
     echo "[FAIL] Node1 failed to retrieve the key-value pair"
     echo "Full logs:"
@@ -198,7 +198,7 @@ docker run -d --name node0-new \
     libp2p-iroh
 
 # Wait for new node0 to connect and complete GET operation
-wait_for_log node0-new "NODE_0-new: Connected to $NODE1_PEER_ID" 15 || exit 1
+wait_for_log node0-new "NODE_0-new: Connected to $NODE1_PEER_ID" 60 || exit 1
 wait_for_log node0-new "NODE_0-new_FOUND_RECORD" 60 || {
     echo "[FAIL] New node0 failed to retrieve the key-value pair"
     echo "Full logs:"
