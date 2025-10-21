@@ -88,6 +88,7 @@ impl Stream {
         sender: iroh::endpoint::SendStream,
         receiver: iroh::endpoint::RecvStream,
     ) -> Result<Self, StreamError> {
+        tracing::debug!("Stream::new - Creating new stream wrapper");
         Ok(Self {
             sender: Some(sender),
             receiver: Some(receiver),
@@ -102,8 +103,15 @@ impl futures::AsyncRead for Stream {
         buf: &mut [u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
         if let Some(receiver) = &mut self.receiver {
-            Pin::new(receiver).poll_read(cx, buf).map_err(Into::into)
+            let result = Pin::new(receiver).poll_read(cx, buf).map_err(Into::into);
+            if let std::task::Poll::Ready(Ok(n)) = &result {
+                tracing::trace!("Stream::poll_read - Read {} bytes", n);
+            } else if let std::task::Poll::Ready(Err(e)) = &result {
+                tracing::error!("Stream::poll_read - Read error: {}", e);
+            }
+            result
         } else {
+            tracing::error!("Stream::poll_read - Stream receiver already closed");
             std::task::Poll::Ready(Err(std::io::Error::new(
                 std::io::ErrorKind::BrokenPipe,
                 "stream receiver closed",
@@ -119,8 +127,15 @@ impl futures::AsyncWrite for Stream {
         buf: &[u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
         if let Some(sender) = &mut self.sender {
-            Pin::new(sender).poll_write(cx, buf).map_err(Into::into)
+            let result = Pin::new(sender).poll_write(cx, buf).map_err(Into::into);
+            if let std::task::Poll::Ready(Ok(n)) = &result {
+                tracing::trace!("Stream::poll_write - Wrote {} bytes", n);
+            } else if let std::task::Poll::Ready(Err(e)) = &result {
+                tracing::error!("Stream::poll_write - Write error: {}", e);
+            }
+            result
         } else {
+            tracing::error!("Stream::poll_write - Stream sender already closed");
             std::task::Poll::Ready(Err(std::io::Error::new(
                 std::io::ErrorKind::BrokenPipe,
                 "stream sender closed",
@@ -133,8 +148,13 @@ impl futures::AsyncWrite for Stream {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
         if let Some(sender) = &mut self.sender {
-            Pin::new(sender).poll_flush(cx).map_err(Into::into)
+            let result = Pin::new(sender).poll_flush(cx).map_err(Into::into);
+            if let std::task::Poll::Ready(Err(e)) = &result {
+                tracing::error!("Stream::poll_flush - Flush error: {}", e);
+            }
+            result
         } else {
+            tracing::error!("Stream::poll_flush - Stream sender already closed");
             std::task::Poll::Ready(Err(std::io::Error::new(
                 std::io::ErrorKind::BrokenPipe,
                 "stream sender closed",
@@ -146,6 +166,7 @@ impl futures::AsyncWrite for Stream {
         mut self: Pin<&mut Self>,
         _cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
+        tracing::debug!("Stream::poll_close - Closing stream");
         let _ = self.receiver.take();
         let _ = self.sender.take();
         std::task::Poll::Ready(Ok(()))
