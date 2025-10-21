@@ -12,11 +12,11 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Transport {
-    secret_key: iroh::SecretKey,
+    _secret_key: iroh::SecretKey,
     protocol: Protocol,
 
-    pub(crate) node_id: iroh::NodeId,
-    pub(crate) peer_id: libp2p_core::PeerId,
+    pub node_id: iroh::NodeId,
+    pub peer_id: libp2p_core::PeerId,
 
     pub timeout: std::time::Duration,
     transport_events_rx:
@@ -80,27 +80,28 @@ impl Transport {
     pub async fn new(keypair: Option<&libp2p_identity::Keypair>) -> Result<Self, TransportError> {
         let (transport_events_tx, transport_events_rx) = tokio::sync::mpsc::unbounded_channel();
 
-        let keypair = if let Some(kp) = keypair {
-            kp.clone()
-        } else {
-            let secret_key_temp = iroh::SecretKey::generate(&mut rand::rng());
-            let ed25519_keypair = libp2p_identity::ed25519::Keypair::try_from_bytes(
-                &mut secret_key_temp.to_bytes().to_vec(),
-            )
-            .map_err(|e| TransportError {
-                kind: TransportErrorKind::Listen(format!(
-                    "Failed to create libp2p ed25519 keypair: {e}"
-                )),
-            })?;
-            ed25519_keypair.into()
-        };
-        let (secret_key, peer_id) = helper::libp2p_keypair_to_iroh_secret(&keypair)
-            .map(|sk| (sk, libp2p_core::PeerId::from(keypair.public())))
-            .ok_or_else(|| TransportError {
+        let (secret_key, peer_id) = if let Some(kp) = keypair {
+            let sk = helper::libp2p_keypair_to_iroh_secret(kp).ok_or_else(|| TransportError {
                 kind: TransportErrorKind::Listen(
                     "Failed to convert libp2p keypair to iroh secret key".to_string(),
                 ),
             })?;
+            let pid = libp2p_core::PeerId::from(kp.public());
+            (sk, pid)
+        } else {
+            let sk = iroh::SecretKey::generate(&mut rand::rng());
+            let node_id = sk.public();
+            let node_id_bytes = node_id.as_bytes();
+            let ed25519_pubkey = libp2p_identity::ed25519::PublicKey::try_from_bytes(node_id_bytes)
+                .map_err(|e| TransportError {
+                    kind: TransportErrorKind::Listen(format!(
+                        "Failed to create libp2p public key from iroh node id: {e}"
+                    )),
+                })?;
+            let libp2p_pubkey = libp2p_identity::PublicKey::from(ed25519_pubkey);
+            let pid = libp2p_core::PeerId::from_public_key(&libp2p_pubkey);
+            (sk, pid)
+        };
 
         let (waiter_tx, mut waiter_rx) = tokio::sync::mpsc::channel(1);
 
@@ -144,7 +145,7 @@ impl Transport {
         Ok(Transport {
             transport_events_tx,
             transport_events_rx,
-            secret_key: secret_key.clone(),
+            _secret_key: secret_key.clone(),
             node_id: secret_key.public(),
             peer_id,
             timeout: std::time::Duration::from_secs(20),
@@ -230,7 +231,8 @@ impl libp2p_core::Transport for Transport {
             ));
         }
 
-        let endpoint = self.protocol
+        let endpoint = self
+            .protocol
             .api
             .call_blocking(act_ok!(actor => async move { actor.endpoint.clone() }))
             .map_err(|e| {
@@ -241,14 +243,15 @@ impl libp2p_core::Transport for Transport {
                 })
             })?;
         let _router = iroh::protocol::Router::builder(endpoint.clone())
-                        .accept(Protocol::ALPN, self.protocol.clone())
-                        .spawn();
+            .accept(Protocol::ALPN, self.protocol.clone())
+            .spawn();
         self.protocol
             .api
             .call_blocking(act_ok!(actor => async move {
                 actor._router = Some(_router);
                 actor.listener_id = Some(id);
-            })).map_err(|e| {
+            }))
+            .map_err(|e| {
                 libp2p_core::transport::TransportError::Other(TransportError {
                     kind: TransportErrorKind::Listen(format!("Failed to set router: {e}")),
                 })

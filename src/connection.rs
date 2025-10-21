@@ -6,13 +6,11 @@ use crate::{
 };
 use futures::{
     FutureExt,
-    future::{BoxFuture, Select},
+    future::BoxFuture,
 };
-use futures_timer::Delay;
-use iroh::{
-    endpoint::{RecvStream, SendStream},
-    protocol::ProtocolHandler,
-};
+use iroh::
+    endpoint::{RecvStream, SendStream}
+;
 use libp2p_core::StreamMuxer;
 
 #[derive(Debug)]

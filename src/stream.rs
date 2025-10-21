@@ -88,7 +88,10 @@ impl Stream {
         sender: iroh::endpoint::SendStream,
         receiver: iroh::endpoint::RecvStream,
     ) -> Result<Self, StreamError> {
-        Ok(Self { sender: Some(sender), receiver: Some(receiver) })
+        Ok(Self {
+            sender: Some(sender),
+            receiver: Some(receiver),
+        })
     }
 }
 
@@ -118,10 +121,10 @@ impl futures::AsyncWrite for Stream {
         if let Some(sender) = &mut self.sender {
             Pin::new(sender).poll_write(cx, buf).map_err(Into::into)
         } else {
-            return std::task::Poll::Ready(Err(std::io::Error::new(
+            std::task::Poll::Ready(Err(std::io::Error::new(
                 std::io::ErrorKind::BrokenPipe,
                 "stream sender closed",
-            )));
+            )))
         }
     }
 
@@ -130,12 +133,12 @@ impl futures::AsyncWrite for Stream {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
         if let Some(sender) = &mut self.sender {
-            return Pin::new(sender).poll_flush(cx).map_err(Into::into);
-        }else {
-            return std::task::Poll::Ready(Err(std::io::Error::new(
+            Pin::new(sender).poll_flush(cx).map_err(Into::into)
+        } else {
+            std::task::Poll::Ready(Err(std::io::Error::new(
                 std::io::ErrorKind::BrokenPipe,
                 "stream sender closed",
-            )));
+            )))
         }
     }
 
