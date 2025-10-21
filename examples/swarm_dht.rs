@@ -1,7 +1,7 @@
 use futures::StreamExt;
 use libp2p::StreamProtocol;
 use libp2p_core::{Multiaddr, Transport as CoreTransport};
-use libp2p_kad::{Behaviour as Kademlia, Event as KademliaEvent, store::MemoryStore};
+use libp2p_kad::{Event as KademliaEvent, store::MemoryStore};
 use libp2p_swarm::{NetworkBehaviour, Swarm, SwarmEvent};
 use std::io::{self, BufRead, Write};
 use std::str::FromStr;
@@ -9,7 +9,7 @@ use std::time::Duration;
 
 #[derive(NetworkBehaviour)]
 struct MyBehaviour {
-    kademlia: Kademlia<MemoryStore>,
+    kademlia: libp2p_kad::Behaviour<MemoryStore>,
 }
 
 #[tokio::main]
@@ -34,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     kad_config.set_query_timeout(Duration::from_secs(60));
 
     let store = MemoryStore::new(peer_id);
-    let mut kademlia = Kademlia::with_config(peer_id, store, kad_config);
+    let mut kademlia = libp2p_kad::Behaviour::with_config(peer_id, store, kad_config);
 
     kademlia.set_mode(Some(libp2p_kad::Mode::Server));
 

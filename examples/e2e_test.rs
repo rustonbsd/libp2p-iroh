@@ -1,14 +1,18 @@
 use futures::StreamExt;
 use libp2p::StreamProtocol;
-use libp2p_core::{Multiaddr, Transport as CoreTransport};
-use libp2p_kad::{Behaviour as Kademlia, Event as KademliaEvent, store::MemoryStore};
+use libp2p_core::Multiaddr;
+use libp2p_kad::{Event as KademliaEvent, store::MemoryStore};
 use libp2p_swarm::{NetworkBehaviour, Swarm, SwarmEvent};
 use std::env;
 use std::time::Duration;
 
+use libp2p_iroh::Transport;
+use libp2p_iroh::TransportTrait;
+
+
 #[derive(NetworkBehaviour)]
 struct MyBehaviour {
-    kademlia: Kademlia<MemoryStore>,
+    kademlia: libp2p_kad::Behaviour<MemoryStore>,
 }
 
 #[tokio::main]
@@ -22,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let keypair = libp2p_identity::Keypair::generate_ed25519();
     let peer_id = keypair.public().to_peer_id();
 
-    let transport = libp2p_iroh::Transport::new(Some(&keypair))
+    let transport = Transport::new(Some(&keypair))
         .await?
         .boxed();
 
@@ -32,7 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     kad_config.set_query_timeout(Duration::from_secs(60));
 
     let store = MemoryStore::new(peer_id);
-    let mut kademlia = Kademlia::with_config(peer_id, store, kad_config);
+    let mut kademlia = libp2p_kad::Behaviour::with_config(peer_id, store, kad_config);
     kademlia.set_mode(Some(libp2p_kad::Mode::Server));
 
     let behaviour = MyBehaviour { kademlia };

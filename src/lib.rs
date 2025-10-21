@@ -7,3 +7,5 @@ pub use connection::{Connecting, Connection, ConnectionError, ConnectionErrorKin
 pub use helper::*;
 pub use stream::{Stream, StreamError, StreamErrorKind};
 pub use transport::{Transport, TransportError, TransportErrorKind};
+
+pub use libp2p_core::Transport as TransportTrait;
