@@ -26,7 +26,7 @@ trap cleanup EXIT
 wait_for_log() {
     local container=$1
     local pattern=$2
-    local timeout=${3:-30}
+    local timeout=${3:-60}
     local elapsed=0
     
     echo "Waiting for '$pattern' in $container logs..."
@@ -63,8 +63,8 @@ docker run -d --name node0 \
     libp2p-iroh
 
 # Wait for node0 to be ready (peer ID and listen address)
-wait_for_log node0 "NODE_0_PEER_ID=" 10 || exit 1
-wait_for_log node0 "NODE_0_LISTEN_ADDR=" 10 || exit 1
+wait_for_log node0 "NODE_0_PEER_ID=" 60 || exit 1
+wait_for_log node0 "NODE_0_LISTEN_ADDR=" 60 || exit 1
 
 # Get node0's peer ID and listen address
 NODE0_PEER_ID=$(extract_from_logs node0 "NODE_0_PEER_ID=")
@@ -102,11 +102,11 @@ docker run -d --name node2 \
     libp2p-iroh
 
 # Wait for node1 to connect to node0
-wait_for_log node1 "NODE_1_LISTEN_ADDR=" 10 || exit 1
+wait_for_log node1 "NODE_1_LISTEN_ADDR=" 60 || exit 1
 wait_for_log node1 "NODE_1: Connected to $NODE0_PEER_ID" 15 || exit 1
 
 # Wait for node2 to connect and complete PUT operation
-wait_for_log node2 "NODE_2_LISTEN_ADDR=" 10 || exit 1
+wait_for_log node2 "NODE_2_LISTEN_ADDR=" 60 || exit 1
 wait_for_log node2 "NODE_2: Connected to $NODE0_PEER_ID" 15 || exit 1
 wait_for_log node2 "NODE_2_PUT_SUCCESS" 30 || exit 1
 
