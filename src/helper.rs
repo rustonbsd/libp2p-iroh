@@ -42,7 +42,6 @@ pub(crate) fn libp2p_keypair_to_iroh_secret(
 
 pub fn iroh_node_id_to_multiaddr(node_id: &NodeId) -> Multiaddr {
     let mut addr = Multiaddr::empty();
-
     addr.push(libp2p_core::multiaddr::Protocol::P2p(
         libp2p_identity::ed25519::PublicKey::try_from_bytes(node_id.as_bytes())
             .map(|pk| libp2p_core::PeerId::from_public_key(&libp2p_identity::PublicKey::from(pk)))

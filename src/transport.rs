@@ -348,7 +348,13 @@ impl ProtocolHandler for Protocol {
         &self,
         connection: iroh::endpoint::Connection,
     ) -> Result<(), iroh::protocol::AcceptError> {
-        let iroh_multi = helper::iroh_node_id_to_multiaddr(&connection.remote_node_id()?);
+        let remote_multi = helper::iroh_node_id_to_multiaddr(&connection.remote_node_id()?);
+        let local_multi = helper::iroh_node_id_to_multiaddr(&self.api
+            .call(act_ok!(actor => async move {
+                actor.endpoint.node_id()
+            }))
+            .await
+            .map_err(iroh::protocol::AcceptError::from_err)?);
 
         self.api
             .call(act_ok!(actor => async move {
@@ -360,8 +366,8 @@ impl ProtocolHandler for Protocol {
                                Ok(connection)
                            }.boxed()
                        },
-                       local_addr: iroh_multi.clone(),
-                       send_back_addr: iroh_multi.clone(),
+                       local_addr: local_multi.clone(),
+                       send_back_addr: remote_multi.clone(),
                    }).map_err(|e| TransportError::from(e.to_string().as_str()))
             }))
             .await

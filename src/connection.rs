@@ -12,6 +12,7 @@ use iroh::
     endpoint::{RecvStream, SendStream}
 ;
 use libp2p_core::StreamMuxer;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Debug)]
 pub struct ConnectionError {
@@ -91,7 +92,15 @@ impl StreamMuxer for Connection {
 
         let incoming = this.incoming.get_or_insert_with(|| {
             let connection = this.connection.clone();
-            async move { connection.accept_bi().await.map_err(Into::into) }.boxed()
+            async move { 
+                match connection.accept_bi().await {
+                    Ok((s, mut r)) => {
+                        r.read_u8().await.map_err(|_| ConnectionError::from("Failed to read from stream"))?;
+                        Ok((s, r))
+                    },
+                    Err(_) => Err(ConnectionError::from("Iroh handshake failed during accept"))
+                }
+             }.boxed()
         });
 
         let (send, recv) = futures::ready!(incoming.poll_unpin(cx))?;
@@ -107,7 +116,16 @@ impl StreamMuxer for Connection {
 
         let outgoing = this.outgoing.get_or_insert_with(|| {
             let connection = this.connection.clone();
-            async move { connection.open_bi().await.map_err(Into::into) }.boxed()
+            async move { 
+                match connection.open_bi().await {
+                    Ok((mut s, r)) => {
+                        // one byte iroh-handshake since accept only connects after open and write, not just open
+                        s.write_u8(0).await.map_err(|_| ConnectionError::from("Failed to write to stream"))?;
+                        Ok((s, r))
+                    }
+                    Err(_) => Err(ConnectionError::from("Iroh handshake failed during open"))
+                }
+            }.boxed()
         });
 
         let (send, recv) = futures::ready!(outgoing.poll_unpin(cx))?;
@@ -124,7 +142,9 @@ impl StreamMuxer for Connection {
         let closing = this.closing.get_or_insert_with(|| {
             this.connection.close(From::from(0u32), &[]);
             let connection = this.connection.clone();
-            async move { connection.closed().await.into() }.boxed()
+            async move { 
+                connection.closed().await.into() 
+            }.boxed()
         });
 
         if matches!(
