@@ -194,7 +194,7 @@ impl StreamMuxer for Connection {
 }
 
 impl Future for Connecting {
-    type Output = Result<(libp2p::PeerId, Connection), TransportError>;
+    type Output = Result<(libp2p::PeerId, libp2p_core::muxing::StreamMuxerBox), TransportError>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
         tracing::debug!("Connecting::poll - Polling connection future");
@@ -221,6 +221,6 @@ impl Future for Connecting {
         };
 
         tracing::debug!("Connecting::poll - Connection muxer created");
-        Poll::Ready(Ok((peer_id, muxer)))
+        Poll::Ready(Ok((peer_id, libp2p_core::muxing::StreamMuxerBox::new(muxer))))
     }
 }

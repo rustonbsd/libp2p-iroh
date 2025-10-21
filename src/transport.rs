@@ -224,7 +224,7 @@ impl Actor<TransportError> for ProtocolActor {
 }
 
 impl libp2p_core::Transport for Transport {
-    type Output = (PeerId, Connection);
+    type Output = (PeerId, libp2p_core::muxing::StreamMuxerBox);
 
     type Error = TransportError;
 
@@ -389,7 +389,7 @@ impl libp2p_core::Transport for Transport {
             })?;
 
             tracing::debug!("Transport::dial - Connection established to {:?}", peer_id);
-            Ok((peer_id, Connection::new(conn)))
+            Ok((peer_id, libp2p_core::muxing::StreamMuxerBox::new(Connection::new(conn))))
         }
         .boxed())
     }

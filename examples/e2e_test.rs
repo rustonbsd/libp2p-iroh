@@ -1,6 +1,6 @@
 use futures::StreamExt;
 use libp2p::StreamProtocol;
-use libp2p_core::{Multiaddr, Transport as CoreTransport, muxing::StreamMuxerBox};
+use libp2p_core::{Multiaddr, Transport as CoreTransport};
 use libp2p_kad::{Behaviour as Kademlia, Event as KademliaEvent, store::MemoryStore};
 use libp2p_swarm::{NetworkBehaviour, Swarm, SwarmEvent};
 use std::env;
@@ -24,7 +24,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let transport = libp2p_iroh::Transport::new(Some(&keypair))
         .await?
-        .map(move |(peer_id, conn), _| (peer_id, StreamMuxerBox::new(conn)))
         .boxed();
 
     println!("NODE_{node_id}_PEER_ID={peer_id}");
