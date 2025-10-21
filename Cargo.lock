@@ -3,6 +3,18 @@
 version = 4
 
 [[package]]
+name = "actor-helper"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9378545a9ebea2fb1aee5a06030736ccb4d64e6558e96ac056e77fc7ac13d4b2"
+dependencies = [
+ "flume",
+ "futures-executor",
+ "futures-util",
+ "tokio",
+]
+
+[[package]]
 name = "addr2line"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -882,6 +894,17 @@ name = "find-msvc-tools"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52051878f80a721bb68ebfbc930e07b65ba72f2da88968ea5c06fd6ca3d3a127"
+
+[[package]]
+name = "flume"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da0e4dd2a88388a1f4ccc7c9ce104604dab68d9f408dc34cd45823d5a9069095"
+dependencies = [
+ "futures-core",
+ "futures-sink",
+ "spin 0.9.8",
+]
 
 [[package]]
 name = "fnv"
@@ -1880,6 +1903,7 @@ dependencies = [
 name = "libp2p-iroh"
 version = "0.0.1"
 dependencies = [
+ "actor-helper",
  "futures",
  "futures-timer",
  "iroh",

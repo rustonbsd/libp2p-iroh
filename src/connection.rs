@@ -67,7 +67,18 @@ pub struct Connection {
 }
 
 pub struct Connecting {
-    connecting: BoxFuture<'static, Result<iroh::endpoint::Connection, TransportError>>,
+    pub connecting: BoxFuture<'static, Result<iroh::endpoint::Connection, TransportError>>,
+}
+
+impl Connection {
+    pub fn new(connection: iroh::endpoint::Connection) -> Self {
+        Self {
+            connection,
+            incoming: None,
+            outgoing: None,
+            closing: None,
+        }
+    }
 }
 
 impl StreamMuxer for Connection {
