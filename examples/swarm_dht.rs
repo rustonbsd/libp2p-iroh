@@ -1,4 +1,5 @@
 use futures::StreamExt;
+use libp2p::StreamProtocol;
 use libp2p_core::{Multiaddr, Transport as CoreTransport, muxing::StreamMuxerBox, upgrade};
 use libp2p_kad::{Behaviour as Kademlia, Config as KademliaConfig, Event as KademliaEvent, store::MemoryStore};
 use libp2p_swarm::{NetworkBehaviour, Swarm, SwarmEvent};
@@ -16,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("libp2p_iroh=debug,swarm_dht=debug")),
         )
         .init();
 
@@ -25,12 +26,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let transport = libp2p_iroh::Transport::new(Some(&keypair))
         .await?
-        .map(move |conn, _| (peer_id, StreamMuxerBox::new(conn)))
+        .map(move |(peer_id, conn),_| (peer_id, StreamMuxerBox::new(conn)))
         .boxed();
 
     println!("Local Peer ID: {peer_id}");
 
-    let mut kad_config = KademliaConfig::default();
+    let mut kad_config = libp2p_kad::Config::new(StreamProtocol::new("/example/kad/1.0.0"));
     kad_config.set_query_timeout(Duration::from_secs(60));
 
     let store = MemoryStore::new(peer_id);

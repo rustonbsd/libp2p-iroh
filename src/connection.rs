@@ -66,7 +66,7 @@ pub struct Connection {
 }
 
 pub struct Connecting {
-    pub connecting: BoxFuture<'static, Result<iroh::endpoint::Connection, TransportError>>,
+    pub connecting: BoxFuture<'static, Result<(libp2p::PeerId, iroh::endpoint::Connection), TransportError>>,
 }
 
 impl Connection {
@@ -172,6 +172,7 @@ impl StreamMuxer for Connection {
             }.boxed()
         });
 
+
         if matches!(
             futures::ready!(closing.poll_unpin(cx)),
             crate::ConnectionError { .. }
@@ -193,14 +194,14 @@ impl StreamMuxer for Connection {
 }
 
 impl Future for Connecting {
-    type Output = Result<Connection, TransportError>;
+    type Output = Result<(libp2p::PeerId, Connection), TransportError>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
         tracing::debug!("Connecting::poll - Polling connection future");
-        let conn = match self.connecting.poll_unpin(cx) {
-            Poll::Ready(Ok(conn)) => {
+        let (peer_id, conn) = match self.connecting.poll_unpin(cx) {
+            Poll::Ready(Ok((peer_id, conn))) => {
                 tracing::debug!("Connecting::poll - Connection established");
-                conn
+                (peer_id, conn)
             },
             Poll::Ready(Err(e)) => {
                 tracing::error!("Connecting::poll - Connection failed: {}", e);
@@ -220,6 +221,6 @@ impl Future for Connecting {
         };
 
         tracing::debug!("Connecting::poll - Connection muxer created");
-        Poll::Ready(Ok(muxer))
+        Poll::Ready(Ok((peer_id, muxer)))
     }
 }

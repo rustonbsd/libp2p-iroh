@@ -3,11 +3,12 @@ use std::fmt::Display;
 use actor_helper::{Action, Actor, ActorError, Handle, Receiver, act_ok};
 use futures::{FutureExt, future::BoxFuture};
 use iroh::protocol::ProtocolHandler;
+use libp2p::PeerId;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::{
     connection::{Connecting, Connection},
-    helper,
+    helper, node_id_to_peerid,
 };
 
 #[derive(Debug)]
@@ -89,7 +90,11 @@ impl Transport {
                 ),
             })?;
             let pid = libp2p_core::PeerId::from(kp.public());
-            tracing::debug!("Transport::new - Peer ID: {}, Node ID: {:?}", pid, sk.public());
+            tracing::debug!(
+                "Transport::new - Peer ID: {}, Node ID: {:?}",
+                pid,
+                sk.public()
+            );
             (sk, pid)
         } else {
             tracing::debug!("Transport::new - Generating new keypair");
@@ -104,7 +109,11 @@ impl Transport {
                 })?;
             let libp2p_pubkey = libp2p_identity::PublicKey::from(ed25519_pubkey);
             let pid = libp2p_core::PeerId::from_public_key(&libp2p_pubkey);
-            tracing::debug!("Transport::new - Generated Peer ID: {}, Node ID: {:?}", pid, node_id);
+            tracing::debug!(
+                "Transport::new - Generated Peer ID: {}, Node ID: {:?}",
+                pid,
+                node_id
+            );
             (sk, pid)
         };
 
@@ -215,7 +224,7 @@ impl Actor<TransportError> for ProtocolActor {
 }
 
 impl libp2p_core::Transport for Transport {
-    type Output = Connection;
+    type Output = (PeerId, Connection);
 
     type Error = TransportError;
 
@@ -228,7 +237,11 @@ impl libp2p_core::Transport for Transport {
         id: libp2p_core::transport::ListenerId,
         _addr: libp2p_core::Multiaddr,
     ) -> Result<(), libp2p_core::transport::TransportError<Self::Error>> {
-        tracing::debug!("Transport::listen_on - Listener ID: {:?}, Address: {:?}", id, _addr);
+        tracing::debug!(
+            "Transport::listen_on - Listener ID: {:?}, Address: {:?}",
+            id,
+            _addr
+        );
         // /iroh/[node-id]
         let listener_id = self
             .protocol
@@ -258,7 +271,10 @@ impl libp2p_core::Transport for Transport {
                     )),
                 })
             })?;
-        tracing::debug!("Transport::listen_on - Creating router with ALPN: {:?}", std::str::from_utf8(Protocol::ALPN));
+        tracing::debug!(
+            "Transport::listen_on - Creating router with ALPN: {:?}",
+            std::str::from_utf8(Protocol::ALPN)
+        );
         let _router = iroh::protocol::Router::builder(endpoint.clone())
             .accept(Protocol::ALPN, self.protocol.clone())
             .spawn();
@@ -276,14 +292,20 @@ impl libp2p_core::Transport for Transport {
             })?;
 
         let iroh_addr = helper::iroh_node_id_to_multiaddr(&self.node_id);
-        tracing::debug!("Transport::listen_on - Sending NewAddress event: {}", iroh_addr);
+        tracing::debug!(
+            "Transport::listen_on - Sending NewAddress event: {}",
+            iroh_addr
+        );
         self.transport_events_tx
             .send(libp2p_core::transport::TransportEvent::NewAddress {
                 listener_id: id,
                 listen_addr: iroh_addr,
             })
             .map_err(|e| {
-                tracing::error!("Transport::listen_on - Failed to send NewAddress event: {}", e);
+                tracing::error!(
+                    "Transport::listen_on - Failed to send NewAddress event: {}",
+                    e
+                );
                 libp2p_core::transport::TransportError::Other(TransportError {
                     kind: TransportErrorKind::Listen(format!(
                         "Failed to send NewAddress event: {e}"
@@ -320,7 +342,10 @@ impl libp2p_core::Transport for Transport {
     ) -> Result<Self::Dial, libp2p_core::transport::TransportError<Self::Error>> {
         tracing::debug!("Transport::dial - Dialing address: {}", addr);
         let node_id = helper::multiaddr_to_iroh_node_id(&addr).ok_or_else(|| {
-            tracing::error!("Transport::dial - Failed to extract NodeId from multiaddr: {}", addr);
+            tracing::error!(
+                "Transport::dial - Failed to extract NodeId from multiaddr: {}",
+                addr
+            );
             libp2p_core::transport::TransportError::Other(TransportError {
                 kind: TransportErrorKind::Dial(
                     "Failed to extract iroh NodeId from multiaddr".to_string(),
@@ -343,7 +368,11 @@ impl libp2p_core::Transport for Transport {
             })?;
 
         Ok(async move {
-            tracing::debug!("Transport::dial - Connecting to {:?} with ALPN {:?}", node_id, std::str::from_utf8(Protocol::ALPN));
+            tracing::debug!(
+                "Transport::dial - Connecting to {:?} with ALPN {:?}",
+                node_id,
+                std::str::from_utf8(Protocol::ALPN)
+            );
             let connecting = endpoint.connect(node_id, Protocol::ALPN);
             let conn = connecting.await.map_err(|e| {
                 tracing::error!("Transport::dial - Connection failed: {}", e);
@@ -351,9 +380,16 @@ impl libp2p_core::Transport for Transport {
                     kind: TransportErrorKind::Dial(e.to_string()),
                 }
             })?;
+            let remote_node_id = conn.remote_node_id().map_err(|e| TransportError {
+                kind: TransportErrorKind::Dial(e.to_string()),
+            })?;
 
-            tracing::debug!("Transport::dial - Connection established to {:?}", node_id);
-            Ok(Connection::new(conn))
+            let peer_id = node_id_to_peerid(&remote_node_id).ok_or(TransportError {
+                kind: TransportErrorKind::Dial("Failed to convert nodeid to peerid".to_string()),
+            })?;
+
+            tracing::debug!("Transport::dial - Connection established to {:?}", peer_id);
+            Ok((peer_id, Connection::new(conn)))
         }
         .boxed())
     }
@@ -380,19 +416,28 @@ impl ProtocolHandler for Protocol {
         tracing::debug!("Protocol::accept - Accepting incoming connection");
         let remote_node_id = connection.remote_node_id()?;
         tracing::debug!("Protocol::accept - Remote node ID: {:?}", remote_node_id);
-        
+
+        let peer_id =
+            node_id_to_peerid(&remote_node_id).ok_or(iroh::protocol::AcceptError::from_err(
+                TransportError::from("Failed to convert NodeId to PeerId"),
+            ))?;
+
         let remote_multi = helper::iroh_node_id_to_multiaddr(&remote_node_id);
-        let local_multi = helper::iroh_node_id_to_multiaddr(&self.api
-            .call(act_ok!(actor => async move {
-                actor.endpoint.node_id()
-            }))
-            .await
-            .map_err(iroh::protocol::AcceptError::from_err)?);
+        let local_multi = helper::iroh_node_id_to_multiaddr(
+            &self
+                .api
+                .call(act_ok!(actor => async move {
+                    actor.endpoint.node_id()
+                }))
+                .await
+                .map_err(iroh::protocol::AcceptError::from_err)?,
+        );
 
         tracing::debug!("Protocol::accept - Remote multiaddr: {}", remote_multi);
         tracing::debug!("Protocol::accept - Local multiaddr: {}", local_multi);
 
-        let listener_id_result = self.api
+        let listener_id_result = self
+            .api
             .call(act_ok!(actor => async move {
                 actor.listener_id
             }))
@@ -415,7 +460,7 @@ impl ProtocolHandler for Protocol {
                        upgrade: Connecting {
                            connecting: async move {
                                tracing::debug!("Protocol::accept - Connection upgrade resolving");
-                               Ok(connection)
+                               Ok((peer_id, connection))
                            }.boxed()
                        },
                        local_addr: local_multi.clone(),
