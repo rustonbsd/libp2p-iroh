@@ -67,7 +67,6 @@ extract_from_logs() {
 echo ""
 echo "Phase 1: Starting node0 (bootstrap node)..."
 docker run -d --name node0 \
-    --network $NETWORK_NAME \
     -e NODE_ID=0 \
     -e OPERATION=listen \
     -e RUST_LOG=debug \
@@ -98,7 +97,6 @@ echo "Waiting 5 seconds for node0 to fully initialize..."
 sleep 5
 
 docker run -d --name node1 \
-    --network $NETWORK_NAME \
     -e NODE_ID=1 \
     -e BOOTSTRAP_PEER="$NODE0_ADDR" \
     -e OPERATION=listen \
@@ -106,7 +104,6 @@ docker run -d --name node1 \
     libp2p-iroh
 
 docker run -d --name node2 \
-    --network $NETWORK_NAME \
     -e NODE_ID=2 \
     -e BOOTSTRAP_PEER="$NODE0_ADDR" \
     -e OPERATION=put \
@@ -152,7 +149,6 @@ docker rm -f node2
 
 # Get from node1
 docker run -d --name node1-get \
-    --network $NETWORK_NAME \
     -e NODE_ID=1-get \
     -e BOOTSTRAP_PEER="$NODE0_ADDR" \
     -e OPERATION=get \
@@ -203,7 +199,6 @@ sleep 2
 
 # Start new node0 and connect to node1
 docker run -d --name node0-new \
-    --network $NETWORK_NAME \
     -e NODE_ID=0-new \
     -e BOOTSTRAP_PEER="$NODE1_ADDR" \
     -e OPERATION=get \
