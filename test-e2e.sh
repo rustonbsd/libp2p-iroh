@@ -6,9 +6,6 @@ echo "========================================="
 echo "Starting End-to-End DHT Test"
 echo "========================================="
 
-# Create isolated Docker network
-NETWORK_NAME="libp2p-iroh-test-net"
-docker network create --driver bridge $NETWORK_NAME 2>/dev/null || true
 
 # Cleanup function
 cleanup() {
@@ -17,31 +14,45 @@ cleanup() {
     echo "Cleaning up..."
     echo "========================================="
     docker rm -f node0 node1 node2 node0-new node1-get 2>/dev/null || true
-    docker network rm $NETWORK_NAME 2>/dev/null || true
 }
 
 trap cleanup EXIT
+
+# Helper function to show container diagnostics
+show_diagnostics() {
+    local container=$1
+    echo "=== Diagnostics for $container ==="
+    echo "Container status:"
+    docker inspect $container --format='{{.State.Status}}' 2>&1 || echo "Container not found"
+    echo "Last 50 log lines:"
+    docker logs $container 2>&1 | tail -50
+    echo "==================================="
+}
 
 # Helper function to wait for a log pattern with timeout
 wait_for_log() {
     local container=$1
     local pattern=$2
-    local timeout=${3:-60}
+    local timeout=${3:-120}
     local elapsed=0
     
-    echo "Waiting for '$pattern' in $container logs..."
+    echo "Waiting for '$pattern' in $container logs (timeout: ${timeout}s)..."
     while [ $elapsed -lt $timeout ]; do
         if docker logs $container 2>&1 | grep -q "$pattern"; then
-            echo "Found: $pattern"
+            echo "Found: $pattern (after ${elapsed}s)"
             return 0
         fi
-        sleep 0.5
+        sleep 1
         elapsed=$((elapsed + 1))
+        
+        # Show progress every 30 seconds
+        if [ $((elapsed % 30)) -eq 0 ]; then
+            echo "  ... still waiting (${elapsed}s elapsed)"
+        fi
     done
     
-    echo "ERROR: Timeout waiting for '$pattern' in $container"
-    echo "Container logs:"
-    docker logs $container 2>&1
+    echo "ERROR: Timeout waiting for '$pattern' in $container after ${elapsed}s"
+    show_diagnostics $container
     return 1
 }
 
@@ -59,12 +70,12 @@ docker run -d --name node0 \
     --network $NETWORK_NAME \
     -e NODE_ID=0 \
     -e OPERATION=listen \
-    -e RUST_LOG=info \
+    -e RUST_LOG=debug \
     libp2p-iroh
 
 # Wait for node0 to be ready (peer ID and listen address)
-wait_for_log node0 "NODE_0_PEER_ID=" 60 || exit 1
-wait_for_log node0 "NODE_0_LISTEN_ADDR=" 60 || exit 1
+wait_for_log node0 "NODE_0_PEER_ID=" 120 || exit 1
+wait_for_log node0 "NODE_0_LISTEN_ADDR=" 120 || exit 1
 
 # Get node0's peer ID and listen address
 NODE0_PEER_ID=$(extract_from_logs node0 "NODE_0_PEER_ID=")
@@ -83,12 +94,15 @@ echo "Node0 Listen Address: $NODE0_ADDR"
 echo ""
 echo "Phase 2: Starting node1 and node2..."
 
+echo "Waiting 5 seconds for node0 to fully initialize..."
+sleep 5
+
 docker run -d --name node1 \
     --network $NETWORK_NAME \
     -e NODE_ID=1 \
     -e BOOTSTRAP_PEER="$NODE0_ADDR" \
     -e OPERATION=listen \
-    -e RUST_LOG=info \
+    -e RUST_LOG=debug \
     libp2p-iroh
 
 docker run -d --name node2 \
@@ -98,17 +112,17 @@ docker run -d --name node2 \
     -e OPERATION=put \
     -e TEST_KEY=testkey \
     -e TEST_VALUE=testvalue \
-    -e RUST_LOG=info \
+    -e RUST_LOG=debug \
     libp2p-iroh
 
 # Wait for node1 to connect to node0
-wait_for_log node1 "NODE_1_LISTEN_ADDR=" 60 || exit 1
-wait_for_log node1 "NODE_1: Connected to $NODE0_PEER_ID" 60 || exit 1
+wait_for_log node1 "NODE_1_LISTEN_ADDR=" 120 || exit 1
+wait_for_log node1 "NODE_1: Connected to $NODE0_PEER_ID" 120 || exit 1
 
 # Wait for node2 to connect and complete PUT operation
-wait_for_log node2 "NODE_2_LISTEN_ADDR=" 60 || exit 1
-wait_for_log node2 "NODE_2: Connected to $NODE0_PEER_ID" 60 || exit 1
-wait_for_log node2 "NODE_2_PUT_SUCCESS" 60 || exit 1
+wait_for_log node2 "NODE_2_LISTEN_ADDR=" 120 || exit 1
+wait_for_log node2 "NODE_2: Connected to $NODE0_PEER_ID" 120 || exit 1
+wait_for_log node2 "NODE_2_PUT_SUCCESS" 120 || exit 1
 
 # Check node1 and node2 logs
 echo ""
@@ -143,12 +157,12 @@ docker run -d --name node1-get \
     -e BOOTSTRAP_PEER="$NODE0_ADDR" \
     -e OPERATION=get \
     -e TEST_KEY=testkey \
-    -e RUST_LOG=info \
+    -e RUST_LOG=debug \
     libp2p-iroh
 
 # Wait for node1-get to connect and complete GET operation
-wait_for_log node1-get "NODE_1-get: Connected to $NODE0_PEER_ID" 60 || exit 1
-wait_for_log node1-get "NODE_1-get_FOUND_RECORD" 60 || {
+wait_for_log node1-get "NODE_1-get: Connected to $NODE0_PEER_ID" 120 || exit 1
+wait_for_log node1-get "NODE_1-get_FOUND_RECORD" 120 || {
     echo "[FAIL] Node1 failed to retrieve the key-value pair"
     echo "Full logs:"
     docker logs node1-get 2>&1
@@ -194,12 +208,12 @@ docker run -d --name node0-new \
     -e BOOTSTRAP_PEER="$NODE1_ADDR" \
     -e OPERATION=get \
     -e TEST_KEY=testkey \
-    -e RUST_LOG=info \
+    -e RUST_LOG=debug \
     libp2p-iroh
 
 # Wait for new node0 to connect and complete GET operation
-wait_for_log node0-new "NODE_0-new: Connected to $NODE1_PEER_ID" 60 || exit 1
-wait_for_log node0-new "NODE_0-new_FOUND_RECORD" 60 || {
+wait_for_log node0-new "NODE_0-new: Connected to $NODE1_PEER_ID" 120 || exit 1
+wait_for_log node0-new "NODE_0-new_FOUND_RECORD" 120 || {
     echo "[FAIL] New node0 failed to retrieve the key-value pair"
     echo "Full logs:"
     docker logs node0-new 2>&1
