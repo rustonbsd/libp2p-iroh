@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use actor_helper::{Action, Actor, ActorError, Handle, Receiver, act_ok};
 use futures::{FutureExt, future::BoxFuture};
-use iroh::protocol::ProtocolHandler;
+use iroh::{protocol::ProtocolHandler, EndpointId};
 use libp2p::PeerId;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
@@ -16,7 +16,7 @@ pub struct Transport {
     _secret_key: iroh::SecretKey,
     protocol: Protocol,
 
-    pub node_id: iroh::NodeId,
+    pub node_id: EndpointId,
     pub peer_id: libp2p_core::PeerId,
 
     pub timeout: std::time::Duration,
@@ -126,7 +126,6 @@ impl Transport {
                 tracing::debug!("Transport::new - Spawned task: Initializing iroh endpoint");
                 if let Ok(endpoint) = iroh::Endpoint::builder()
                     .secret_key(secret_key)
-                    .discovery_n0()
                     .bind()
                     .await
                     .map_err(|e| TransportError {
@@ -343,16 +342,16 @@ impl libp2p_core::Transport for Transport {
         tracing::debug!("Transport::dial - Dialing address: {}", addr);
         let node_id = helper::multiaddr_to_iroh_node_id(&addr).ok_or_else(|| {
             tracing::error!(
-                "Transport::dial - Failed to extract NodeId from multiaddr: {}",
+                "Transport::dial - Failed to extract EndpointId from multiaddr: {}",
                 addr
             );
             libp2p_core::transport::TransportError::Other(TransportError {
                 kind: TransportErrorKind::Dial(
-                    "Failed to extract iroh NodeId from multiaddr".to_string(),
+                    "Failed to extract iroh EndpointId from multiaddr".to_string(),
                 ),
             })
         })?;
-        tracing::debug!("Transport::dial - Extracted NodeId: {:?}", node_id);
+        tracing::debug!("Transport::dial - Extracted EndpointId: {:?}", node_id);
         let protocol = self.protocol.clone();
 
         let endpoint = protocol
@@ -380,12 +379,12 @@ impl libp2p_core::Transport for Transport {
                     kind: TransportErrorKind::Dial(e.to_string()),
                 }
             })?;
-            let remote_node_id = conn.remote_node_id().map_err(|e| TransportError {
+            let remote_id = conn.remote_id().map_err(|e| TransportError {
                 kind: TransportErrorKind::Dial(e.to_string()),
             })?;
 
-            let peer_id = node_id_to_peerid(&remote_node_id).ok_or(TransportError {
-                kind: TransportErrorKind::Dial("Failed to convert nodeid to peerid".to_string()),
+            let peer_id = node_id_to_peerid(&remote_id).ok_or(TransportError {
+                kind: TransportErrorKind::Dial("Failed to convert EndpointId to peerid".to_string()),
             })?;
 
             tracing::debug!("Transport::dial - Connection established to {:?}", peer_id);
@@ -414,12 +413,12 @@ impl ProtocolHandler for Protocol {
         connection: iroh::endpoint::Connection,
     ) -> Result<(), iroh::protocol::AcceptError> {
         tracing::debug!("Protocol::accept - Accepting incoming connection");
-        let remote_node_id = connection.remote_node_id()?;
+        let remote_node_id = connection.remote_id()?;
         tracing::debug!("Protocol::accept - Remote node ID: {:?}", remote_node_id);
 
         let peer_id =
             node_id_to_peerid(&remote_node_id).ok_or(iroh::protocol::AcceptError::from_err(
-                TransportError::from("Failed to convert NodeId to PeerId"),
+                TransportError::from("Failed to convert EndpointId to PeerId"),
             ))?;
 
         let remote_multi = helper::iroh_node_id_to_multiaddr(&remote_node_id);
@@ -427,7 +426,7 @@ impl ProtocolHandler for Protocol {
             &self
                 .api
                 .call(act_ok!(actor => async move {
-                    actor.endpoint.node_id()
+                    actor.endpoint.id()
                 }))
                 .await
                 .map_err(iroh::protocol::AcceptError::from_err)?,

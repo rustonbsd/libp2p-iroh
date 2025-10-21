@@ -1,7 +1,7 @@
-use iroh::NodeId;
-use libp2p_core::Multiaddr;
+use iroh::EndpointId;
+use libp2p::Multiaddr;
 
-pub(crate) fn multiaddr_to_iroh_node_id(addr: &Multiaddr) -> Option<iroh::NodeId> {
+pub(crate) fn multiaddr_to_iroh_node_id(addr: &Multiaddr) -> Option<EndpointId> {
     tracing::debug!(
         "helper::multiaddr_to_iroh_node_id - Converting multiaddr: {}",
         addr
@@ -15,15 +15,15 @@ pub(crate) fn multiaddr_to_iroh_node_id(addr: &Multiaddr) -> Option<iroh::NodeId
             );
             if let Some(node_id) = peer_id_to_node_id(&peer_id) {
                 tracing::debug!(
-                    "helper::multiaddr_to_iroh_node_id - Converted to NodeId: {:?}",
+                    "helper::multiaddr_to_iroh_node_id - Converted to EndpointId: {:?}",
                     node_id
                 );
                 return Some(node_id);
             } else {
                 tracing::warn!(
-                    "helper::multiaddr_to_iroh_node_id - Failed to convert PeerId to NodeId"
+                    "helper::multiaddr_to_iroh_node_id - Failed to convert PeerId to EndpointId"
                 );
-                println!("Failed to convert PeerId to NodeId");
+                println!("Failed to convert PeerId to EndpointId");
             }
         }
     }
@@ -32,7 +32,7 @@ pub(crate) fn multiaddr_to_iroh_node_id(addr: &Multiaddr) -> Option<iroh::NodeId
     None
 }
 
-pub(crate) fn peer_id_to_node_id(peer_id: &libp2p_core::PeerId) -> Option<iroh::NodeId> {
+pub(crate) fn peer_id_to_node_id(peer_id: &libp2p_core::PeerId) -> Option<EndpointId> {
     tracing::debug!(
         "helper::peer_id_to_node_id - Converting PeerId: {}",
         peer_id
@@ -50,14 +50,14 @@ pub(crate) fn peer_id_to_node_id(peer_id: &libp2p_core::PeerId) -> Option<iroh::
         return None;
     }
     if let Ok(byte_array) = <[u8; 32]>::try_from(&bytes[6..]) {
-        if let Ok(node_id) = iroh::NodeId::from_bytes(&byte_array) {
+        if let Ok(node_id) = EndpointId::from_bytes(&byte_array) {
             tracing::debug!(
-                "helper::peer_id_to_node_id - Successfully converted to NodeId: {:?}",
+                "helper::peer_id_to_node_id - Successfully converted to EndpointId: {:?}",
                 node_id
             );
             return Some(node_id);
         } else {
-            tracing::warn!("helper::peer_id_to_node_id - Failed to create NodeId from bytes");
+            tracing::warn!("helper::peer_id_to_node_id - Failed to create EndpointId from bytes");
         }
     } else {
         tracing::warn!(
@@ -78,9 +78,9 @@ pub(crate) fn libp2p_keypair_to_iroh_secret(
     None
 }
 
-pub fn iroh_node_id_to_multiaddr(node_id: &NodeId) -> Multiaddr {
+pub fn iroh_node_id_to_multiaddr(node_id: &EndpointId) -> Multiaddr {
     tracing::debug!(
-        "helper::iroh_node_id_to_multiaddr - Converting NodeId: {:?}",
+        "helper::iroh_node_id_to_multiaddr - Converting EndpointId: {:?}",
         node_id
     );
     let mut addr = Multiaddr::empty();
@@ -95,7 +95,7 @@ pub fn iroh_node_id_to_multiaddr(node_id: &NodeId) -> Multiaddr {
                 );
                 peer_id
             })
-            .expect("Failed to convert iroh NodeId to libp2p PeerId"),
+            .expect("Failed to convert iroh EndpointId to libp2p PeerId"),
     ));
 
     tracing::debug!(
@@ -105,9 +105,9 @@ pub fn iroh_node_id_to_multiaddr(node_id: &NodeId) -> Multiaddr {
     addr
 }
 
-pub fn node_id_to_peerid(node_id: &NodeId) -> Option<libp2p::PeerId> {
-    let pubkey_bytes = node_id.public().to_bytes();
-    let libp2p_pubkey = libp2p_identity::ed25519::PublicKey::try_from_bytes(&pubkey_bytes).ok()?;
+pub fn node_id_to_peerid(node_id: &EndpointId) -> Option<libp2p::PeerId> {
+    let pubkey_bytes = node_id.to_vec();
+    let libp2p_pubkey = libp2p_identity::ed25519::PublicKey::try_from_bytes(pubkey_bytes.as_slice()).ok()?;
 
     Some(libp2p_core::PeerId::from_public_key(
         &libp2p_identity::PublicKey::from(libp2p_pubkey),

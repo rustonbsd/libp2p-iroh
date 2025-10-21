@@ -47,13 +47,6 @@ impl From<iroh::endpoint::ReadError> for StreamError {
     }
 }
 
-impl From<iroh::endpoint::RemoteNodeIdError> for StreamError {
-    fn from(err: iroh::endpoint::RemoteNodeIdError) -> Self {
-        Self {
-            kind: StreamErrorKind::Connection(err.to_string()),
-        }
-    }
-}
 
 impl From<&str> for StreamError {
     fn from(err: &str) -> Self {
