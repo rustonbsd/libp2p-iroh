@@ -2,27 +2,6 @@
 
 A libp2p transport using [iroh](https://github.com/n0-computer/iroh) QUIC that works behind any NAT without port forwarding, UPnP, or manual configuration.
 
-## What This Solves
-
-If you're building with libp2p, you know NAT traversal is complicated. You need:
-- Multiple transport implementations
-- Relay servers
-- AutoNAT protocol
-- DCUtR for hole punching
-- Careful configuration
-
-With libp2p-iroh, you get reliable peer-to-peer connections behind any firewall out of the box. No relay configuration. No hole punching setup. Just dial a peer by their PeerId and it works.
-
-## How It Works
-
-The transport uses iroh's built-in relay network and NAT traversal. When you dial a peer, iroh handles:
-- Direct connections when possible
-- Relay routing as fallback if (immediate) direct connections fail
-- Automatic hole punching
-- Connection upgrades from relayed to direct
-
-You don't configure any of this. It just works with the magic of [iroh](https://github.com/n0-computer/iroh).
-
 ## Installation
 
 Add to your `Cargo.toml`:
@@ -35,50 +14,7 @@ libp2p-iroh = "0.0.1"
 ## Usage
 
 Replace your existing transport with libp2p-iroh. That's it.
-
-### Conceptual Example
-
-```rust
-use libp2p_iroh::Transport;
-use libp2p_iroh::TransportTrait;
-use libp2p_swarm::Swarm;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let keypair = libp2p_identity::Keypair::generate_ed25519();
-    let peer_id = keypair.public().to_peer_id();
-
-    // Create the transport
-    let transport = libp2p_iroh::Transport::new(Some(&keypair))
-        .await?
-        .boxed();
-
-    // Use it like any other libp2p transport
-    let swarm = Swarm::new(
-        transport,
-        your_behaviour,
-        peer_id,
-        Default::default(),
-    );
-
-    // Connections work behind any NAT
-    swarm.dial(peer_multiaddr)?;
-    
-    Ok(())
-}
-```
-
-### Multiaddr Format
-
-Peers are addressed using iroh's node ID format:
-
-```
-/p2p/12D3KooWAbCdEf...  # Standard libp2p PeerId format
-```
-
-The transport automatically handles the conversion between libp2p PeerIds and iroh NodeIds.
-
-### Concrete Example (see basic)
+Here's a minimal example using libp2p-kad with libp2p-iroh transport:
 
 ```rust
 use libp2p::Multiaddr;
@@ -167,6 +103,38 @@ cargo run --example swarm_dht
 ```
 
 Both peers can be behind different NATs. The connection will establish successfully.
+
+## What This Solves
+
+If you're building with libp2p, you know NAT traversal is complicated. You need:
+- Multiple transport implementations
+- Relay servers
+- AutoNAT protocol
+- DCUtR for hole punching
+- Careful configuration
+
+With libp2p-iroh, you get reliable peer-to-peer connections behind any firewall out of the box. No relay configuration. No hole punching setup. Just dial a peer by their PeerId and it works.
+
+## How It Works
+
+The transport uses iroh's built-in relay network and NAT traversal. When you dial a peer, iroh handles:
+- Direct connections when possible
+- Relay routing as fallback if (immediate) direct connections fail
+- Automatic hole punching
+- Connection upgrades from relayed to direct
+
+You don't configure any of this. It just works with the magic of [iroh](https://github.com/n0-computer/iroh).
+
+
+### Multiaddr Format
+
+Peers are addressed using iroh's node ID format:
+
+```
+/p2p/12D3KooWAbCdEf...  # Standard libp2p PeerId format
+```
+
+The transport automatically handles the conversion between libp2p PeerIds and iroh NodeIds.
 
 ## Features
 
