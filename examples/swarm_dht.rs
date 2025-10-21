@@ -47,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         libp2p_swarm::Config::with_executor(Box::new(|fut| {
             tokio::spawn(fut);
         }))
-        .with_idle_connection_timeout(Duration::from_secs(60)),
+        .with_idle_connection_timeout(Duration::from_secs(300)),
     );
 
     swarm.listen_on(Multiaddr::empty())?;

@@ -167,7 +167,7 @@ impl Transport {
             _secret_key: secret_key.clone(),
             node_id: secret_key.public(),
             peer_id,
-            timeout: std::time::Duration::from_secs(20),
+            timeout: std::time::Duration::from_secs(300),
             protocol,
         })
     }

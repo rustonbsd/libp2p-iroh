@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         libp2p_swarm::Config::with_executor(Box::new(|fut| {
             tokio::spawn(fut);
         }))
-        .with_idle_connection_timeout(Duration::from_secs(120)),
+        .with_idle_connection_timeout(Duration::from_secs(300)),
     );
 
     swarm.listen_on(Multiaddr::empty())?;
@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut operation_completed = false;
 
     // Timeout for the entire operation
-    let timeout = tokio::time::sleep(Duration::from_secs(180));
+    let timeout = tokio::time::sleep(Duration::from_secs(300));
     tokio::pin!(timeout);
 
     loop {
