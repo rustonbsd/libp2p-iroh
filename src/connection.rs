@@ -213,12 +213,7 @@ impl Future for Connecting {
             }
         };
 
-        let muxer = Connection {
-            connection: conn,
-            incoming: None,
-            outgoing: None,
-            closing: None,
-        };
+        let muxer = Connection::new(conn);
 
         tracing::debug!("Connecting::poll - Connection muxer created");
         Poll::Ready(Ok((peer_id, libp2p_core::muxing::StreamMuxerBox::new(muxer))))

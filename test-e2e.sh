@@ -16,11 +16,41 @@ cleanup() {
     echo "========================================="
     echo "Cleaning up..."
     echo "========================================="
-    docker rm -f node0 node1 node2 node0-new 2>/dev/null || true
+    docker rm -f node0 node1 node2 node0-new node1-get 2>/dev/null || true
     docker network rm $NETWORK_NAME 2>/dev/null || true
 }
 
 trap cleanup EXIT
+
+# Helper function to wait for a log pattern with timeout
+wait_for_log() {
+    local container=$1
+    local pattern=$2
+    local timeout=${3:-30}
+    local elapsed=0
+    
+    echo "Waiting for '$pattern' in $container logs..."
+    while [ $elapsed -lt $timeout ]; do
+        if docker logs $container 2>&1 | grep -q "$pattern"; then
+            echo "Found: $pattern"
+            return 0
+        fi
+        sleep 0.5
+        elapsed=$((elapsed + 1))
+    done
+    
+    echo "ERROR: Timeout waiting for '$pattern' in $container"
+    echo "Container logs:"
+    docker logs $container 2>&1
+    return 1
+}
+
+# Helper function to extract value from logs
+extract_from_logs() {
+    local container=$1
+    local pattern=$2
+    docker logs $container 2>&1 | grep "$pattern" | cut -d'=' -f2
+}
 
 # Phase 1: Start node0 (bootstrap node)
 echo ""
@@ -32,11 +62,13 @@ docker run -d --name node0 \
     -e RUST_LOG=info \
     libp2p-iroh
 
-sleep 5
+# Wait for node0 to be ready (peer ID and listen address)
+wait_for_log node0 "NODE_0_PEER_ID=" 10 || exit 1
+wait_for_log node0 "NODE_0_LISTEN_ADDR=" 10 || exit 1
 
 # Get node0's peer ID and listen address
-NODE0_PEER_ID=$(docker logs node0 2>&1 | grep "NODE_0_PEER_ID=" | cut -d'=' -f2)
-NODE0_ADDR=$(docker logs node0 2>&1 | grep "NODE_0_LISTEN_ADDR=" | cut -d'=' -f2)
+NODE0_PEER_ID=$(extract_from_logs node0 "NODE_0_PEER_ID=")
+NODE0_ADDR=$(extract_from_logs node0 "NODE_0_LISTEN_ADDR=")
 
 if [ -z "$NODE0_PEER_ID" ]; then
     echo "ERROR: Failed to get node0 peer ID"
@@ -69,7 +101,14 @@ docker run -d --name node2 \
     -e RUST_LOG=info \
     libp2p-iroh
 
-sleep 15
+# Wait for node1 to connect to node0
+wait_for_log node1 "NODE_1_LISTEN_ADDR=" 10 || exit 1
+wait_for_log node1 "NODE_1: Connected to $NODE0_PEER_ID" 15 || exit 1
+
+# Wait for node2 to connect and complete PUT operation
+wait_for_log node2 "NODE_2_LISTEN_ADDR=" 10 || exit 1
+wait_for_log node2 "NODE_2: Connected to $NODE0_PEER_ID" 15 || exit 1
+wait_for_log node2 "NODE_2_PUT_SUCCESS" 30 || exit 1
 
 # Check node1 and node2 logs
 echo ""
@@ -92,7 +131,7 @@ fi
 
 # Phase 3: Get the key from node0 and node1
 echo ""
-echo "Phase 3: Retrieving key from node0 and node1..."
+echo "Phase 3: Retrieving key from node1..."
 
 # Stop and remove node2 (it's done its job)
 docker rm -f node2
@@ -107,7 +146,14 @@ docker run -d --name node1-get \
     -e RUST_LOG=info \
     libp2p-iroh
 
-sleep 25
+# Wait for node1-get to connect and complete GET operation
+wait_for_log node1-get "NODE_1-get: Connected to $NODE0_PEER_ID" 15 || exit 1
+wait_for_log node1-get "NODE_1-get_FOUND_RECORD" 60 || {
+    echo "[FAIL] Node1 failed to retrieve the key-value pair"
+    echo "Full logs:"
+    docker logs node1-get 2>&1
+    exit 1
+}
 
 # Check if node1 found the record
 echo "Node1-get logs:"
@@ -116,7 +162,7 @@ docker logs node1-get 2>&1 | tail -30
 if docker logs node1-get 2>&1 | grep -q "NODE_1-get_FOUND_RECORD: testkey = testvalue"; then
     echo "[PASS] Node1 successfully retrieved the key-value pair"
 else
-    echo "[FAIL] Node1 failed to retrieve the key-value pair"
+    echo "[FAIL] Node1 failed to retrieve the correct key-value pair"
     echo "Full logs:"
     docker logs node1-get 2>&1
     exit 1
@@ -129,8 +175,8 @@ echo ""
 echo "Phase 4: Replacing node0 with a new instance..."
 
 # Get node1's peer ID before killing node0
-NODE1_PEER_ID=$(docker logs node1 2>&1 | grep "NODE_1_PEER_ID=" | cut -d'=' -f2)
-NODE1_ADDR=$(docker logs node1 2>&1 | grep "NODE_1_LISTEN_ADDR=" | cut -d'=' -f2)
+NODE1_PEER_ID=$(extract_from_logs node1 "NODE_1_PEER_ID=")
+NODE1_ADDR=$(extract_from_logs node1 "NODE_1_LISTEN_ADDR=")
 
 echo "Node1 Peer ID: $NODE1_PEER_ID"
 echo "Node1 Listen Address: $NODE1_ADDR"
@@ -138,6 +184,7 @@ echo "Node1 Listen Address: $NODE1_ADDR"
 # Kill original node0
 docker rm -f node0
 
+# Give network time to recognize the disconnection
 sleep 2
 
 # Start new node0 and connect to node1
@@ -150,7 +197,14 @@ docker run -d --name node0-new \
     -e RUST_LOG=info \
     libp2p-iroh
 
-sleep 25
+# Wait for new node0 to connect and complete GET operation
+wait_for_log node0-new "NODE_0-new: Connected to $NODE1_PEER_ID" 15 || exit 1
+wait_for_log node0-new "NODE_0-new_FOUND_RECORD" 60 || {
+    echo "[FAIL] New node0 failed to retrieve the key-value pair"
+    echo "Full logs:"
+    docker logs node0-new 2>&1
+    exit 1
+}
 
 # Check if new node0 found the record
 echo ""
@@ -160,7 +214,7 @@ docker logs node0-new 2>&1 | tail -30
 if docker logs node0-new 2>&1 | grep -q "NODE_0-new_FOUND_RECORD: testkey = testvalue"; then
     echo "[PASS] New node0 successfully retrieved the key-value pair"
 else
-    echo "[FAIL] New node0 failed to retrieve the key-value pair"
+    echo "[FAIL] New node0 failed to retrieve the correct key-value pair"
     echo "Full logs:"
     docker logs node0-new 2>&1
     exit 1

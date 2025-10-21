@@ -169,7 +169,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
 
                     if operation_completed && operation != "listen" {
-                        println!("NODE_{node_id}: Operation completed successfully");
+                        println!("NODE_{node_id}: Operation completed");
                         return Ok(());
                     }
                 }
