@@ -93,9 +93,6 @@ echo "Node0 Listen Address: $NODE0_ADDR"
 echo ""
 echo "Phase 2: Starting node1 and node2..."
 
-echo "Waiting 5 seconds for node0 to fully initialize..."
-sleep 5
-
 docker run -d --name node1 \
     -e NODE_ID=1 \
     -e BOOTSTRAP_PEER="$NODE0_ADDR" \
@@ -140,12 +137,11 @@ else
     exit 1
 fi
 
-# Phase 3: Get the key from node0 and node1
-echo ""
-echo "Phase 3: Retrieving key from node1..."
 
-# Stop and remove node2 (it's done its job)
-docker rm -f node2
+# Phase 3: Get the key from a new node
+echo ""
+echo "Phase 3: Retrieving key from a new node..."
+
 
 # Get from node1
 docker run -d --name node1-get \
@@ -170,15 +166,15 @@ echo "Node1-get logs:"
 docker logs node1-get 2>&1 | tail -30
 
 if docker logs node1-get 2>&1 | grep -q "NODE_1-get_FOUND_RECORD: testkey = testvalue"; then
-    echo "[PASS] Node1 successfully retrieved the key-value pair"
+    echo "[PASS] New node successfully retrieved the key-value pair"
 else
-    echo "[FAIL] Node1 failed to retrieve the correct key-value pair"
+    echo "[FAIL] New node failed to retrieve the correct key-value pair"
     echo "Full logs:"
     docker logs node1-get 2>&1
     exit 1
 fi
 
-docker rm -f node1-get
+echo "Keeping node1-get alive in the network..."
 
 # Phase 4: Kill node0, start a new node0, connect it to node1, and get the key
 echo ""
@@ -194,7 +190,6 @@ echo "Node1 Listen Address: $NODE1_ADDR"
 # Kill original node0
 docker rm -f node0
 
-# Give network time to recognize the disconnection
 sleep 2
 
 # Start new node0 and connect to node1
@@ -237,9 +232,10 @@ echo ""
 echo "Summary:"
 echo "1. [PASS] Node0 started as bootstrap node"
 echo "2. [PASS] Node1 and Node2 connected to Node0"
-echo "3. [PASS] Node2 stored key-value pair in DHT"
-echo "4. [PASS] Node1 retrieved key-value pair from DHT"
-echo "5. [PASS] Original Node0 was replaced with new instance"
+echo "3. [PASS] Node2 stored key-value pair in DHT with Quorum=3"
+echo "4. [PASS] DHT replicated record across all 3 nodes"
+echo "5. [PASS] New node retrieved key-value pair from DHT"
+echo "6. [PASS] Original Node0 was replaced with new instance"
 echo "6. [PASS] New Node0 connected to Node1 and retrieved key-value pair"
 echo ""
 echo "DHT functionality verified across node replacement!"

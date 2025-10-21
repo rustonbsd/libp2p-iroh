@@ -34,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut kad_config = libp2p_kad::Config::new(StreamProtocol::new("/e2e-test/kad/1.0.0"));
     kad_config.set_query_timeout(Duration::from_secs(60));
-
+    
     let store = MemoryStore::new(peer_id);
     let mut kademlia = libp2p_kad::Behaviour::with_config(peer_id, store, kad_config);
     kademlia.set_mode(Some(libp2p_kad::Mode::Server));
@@ -104,11 +104,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         );
                                         if let Err(e) = swarm.behaviour_mut().kademlia.put_record(
                                             record,
-                                            libp2p_kad::Quorum::One
+                                            libp2p_kad::Quorum::N(std::num::NonZeroUsize::new(2).unwrap())
                                         ) {
                                             eprintln!("NODE_{node_id}: Put failed: {e}");
                                         } else {
-                                            println!("NODE_{node_id}: Put initiated");
+                                            println!("NODE_{node_id}: Put initiated (waiting for 2-node quorum)");
                                         }
                                     }
                                     "get" => {
@@ -169,8 +169,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
 
                     if operation_completed && operation != "listen" {
-                        println!("NODE_{node_id}: Operation completed");
-                        return Ok(());
+                        println!("NODE_{node_id}: Operation completed, staying alive for DHT replication");
+                        operation_completed = false;
                     }
                 }
             }
