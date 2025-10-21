@@ -1997,7 +1997,7 @@ dependencies = [
 
 [[package]]
 name = "libp2p-iroh"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "actor-helper",
  "futures",

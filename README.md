@@ -8,7 +8,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-libp2p-iroh = "0.0.1"
+libp2p-iroh = "0.1"
 ```
 
 ## Usage
@@ -143,7 +143,7 @@ The transport automatically handles the conversion between libp2p PeerIds and ir
 Disable default features if you only need the transport:
 
 ```toml
-libp2p-iroh = { version = "0.0.1", default-features = false }
+libp2p-iroh = { version = "0.1", default-features = false }
 ```
 
 ## Technical Details

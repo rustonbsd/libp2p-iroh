@@ -174,7 +174,7 @@ impl Transport {
 }
 
 impl Protocol {
-    const ALPN: &'static [u8] = b"/iroh/libp2p-transport/0.0.1";
+    const ALPN: &'static [u8] = b"/iroh/libp2p-transport/0.1.0";
     pub fn new(
         endpoint: iroh::Endpoint,
         transport_tx: UnboundedSender<
