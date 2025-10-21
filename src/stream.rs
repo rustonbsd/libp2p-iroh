@@ -116,8 +116,7 @@ impl futures::AsyncRead for Stream {
                 }
                 std::task::Poll::Ready(Err(e)) => {
                     tracing::debug!("Stream::poll_read - Read error: {}", e);
-                    std::task::Poll::Ready(Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
+                    std::task::Poll::Ready(Err(std::io::Error::other(
                         e,
                     )))
                 }
@@ -153,8 +152,7 @@ impl futures::AsyncWrite for Stream {
                     } else {
                         tracing::error!("Stream::poll_write - Write error: {}", e);
                     }
-                    std::task::Poll::Ready(Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
+                    std::task::Poll::Ready(Err(std::io::Error::other(
                         e,
                     )))
                 }
