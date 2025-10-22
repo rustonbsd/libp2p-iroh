@@ -75,12 +75,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 println!("NODE_{node_id}_LISTEN_ADDR={address}");
                                 listen_addr_printed = true;
 
+                                tokio::time::sleep(Duration::from_millis(500)).await;
+
                                 if let Some(ref bootstrap) = bootstrap_peer {
                                     if let Ok(addr) = bootstrap.parse::<Multiaddr>() {
                                         println!("NODE_{node_id}: Dialing bootstrap peer: {addr}");
-                                        if let Err(e) = swarm.dial(addr) {
-                                            eprintln!("NODE_{node_id}: Failed to dial: {e}");
+                                        match swarm.dial(addr.clone()) {
+                                            Ok(_) => println!("NODE_{node_id}: Dial initiated successfully"),
+                                            Err(e) => eprintln!("NODE_{node_id}: Failed to dial: {e}"),
                                         }
+                                    } else {
+                                        eprintln!("NODE_{node_id}: Failed to parse bootstrap address");
                                     }
                                 }
                             }
@@ -164,6 +169,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         SwarmEvent::ConnectionClosed { peer_id: closed_peer, cause, .. } => {
                             println!("NODE_{node_id}: Connection closed with {closed_peer}: {cause:?}");
+                        }
+                        SwarmEvent::IncomingConnection { .. } => {
+                            println!("NODE_{node_id}: Incoming connection attempt");
+                        }
+                        SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
+                            eprintln!("NODE_{node_id}: Outgoing connection error to {peer_id:?}: {error}");
+                        }
+                        SwarmEvent::IncomingConnectionError { error, .. } => {
+                            eprintln!("NODE_{node_id}: Incoming connection error: {error}");
+                        }
+                        SwarmEvent::Dialing { peer_id, .. } => {
+                            println!("NODE_{node_id}: Dialing {peer_id:?}...");
                         }
                         _ => {}
                     }

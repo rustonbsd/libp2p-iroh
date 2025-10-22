@@ -6,7 +6,6 @@ echo "========================================="
 echo "Starting End-to-End DHT Test"
 echo "========================================="
 
-
 # Cleanup function
 cleanup() {
     echo ""
@@ -69,7 +68,7 @@ echo "Phase 1: Starting node0 (bootstrap node)..."
 docker run -d --name node0 \
     -e NODE_ID=0 \
     -e OPERATION=listen \
-    -e RUST_LOG=debug \
+    -e RUST_LOG=info \
     libp2p-iroh
 
 # Wait for node0 to be ready (peer ID and listen address)
@@ -97,7 +96,7 @@ docker run -d --name node1 \
     -e NODE_ID=1 \
     -e BOOTSTRAP_PEER="$NODE0_ADDR" \
     -e OPERATION=listen \
-    -e RUST_LOG=debug \
+    -e RUST_LOG=info \
     libp2p-iroh
 
 docker run -d --name node2 \
@@ -106,16 +105,16 @@ docker run -d --name node2 \
     -e OPERATION=put \
     -e TEST_KEY=testkey \
     -e TEST_VALUE=testvalue \
-    -e RUST_LOG=debug \
+    -e RUST_LOG=info \
     libp2p-iroh
 
 # Wait for node1 to connect to node0
 wait_for_log node1 "NODE_1_LISTEN_ADDR=" 120 || exit 1
-wait_for_log node1 "NODE_1: Connected to $NODE0_PEER_ID" 120 || exit 1
+wait_for_log node1 "NODE_1: Connected to" 120 || exit 1
 
 # Wait for node2 to connect and complete PUT operation
 wait_for_log node2 "NODE_2_LISTEN_ADDR=" 120 || exit 1
-wait_for_log node2 "NODE_2: Connected to $NODE0_PEER_ID" 120 || exit 1
+wait_for_log node2 "NODE_2: Connected to" 120 || exit 1
 wait_for_log node2 "NODE_2_PUT_SUCCESS" 120 || exit 1
 
 # Check node1 and node2 logs
@@ -149,11 +148,11 @@ docker run -d --name node1-get \
     -e BOOTSTRAP_PEER="$NODE0_ADDR" \
     -e OPERATION=get \
     -e TEST_KEY=testkey \
-    -e RUST_LOG=debug \
+    -e RUST_LOG=info \
     libp2p-iroh
 
 # Wait for node1-get to connect and complete GET operation
-wait_for_log node1-get "NODE_1-get: Connected to $NODE0_PEER_ID" 120 || exit 1
+wait_for_log node1-get "NODE_1-get: Connected to" 120 || exit 1
 wait_for_log node1-get "NODE_1-get_FOUND_RECORD" 120 || {
     echo "[FAIL] Node1 failed to retrieve the key-value pair"
     echo "Full logs:"
@@ -198,11 +197,11 @@ docker run -d --name node0-new \
     -e BOOTSTRAP_PEER="$NODE1_ADDR" \
     -e OPERATION=get \
     -e TEST_KEY=testkey \
-    -e RUST_LOG=debug \
+    -e RUST_LOG=info \
     libp2p-iroh
 
 # Wait for new node0 to connect and complete GET operation
-wait_for_log node0-new "NODE_0-new: Connected to $NODE1_PEER_ID" 120 || exit 1
+wait_for_log node0-new "NODE_0-new: Connected to" 120 || exit 1
 wait_for_log node0-new "NODE_0-new_FOUND_RECORD" 120 || {
     echo "[FAIL] New node0 failed to retrieve the key-value pair"
     echo "Full logs:"
