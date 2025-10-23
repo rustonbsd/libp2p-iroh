@@ -8,10 +8,6 @@ echo "========================================="
 
 # Cleanup function
 cleanup() {
-    echo ""
-    echo "========================================="
-    echo "Cleaning up..."
-    echo "========================================="
     docker rm -f node0 node1 node2 node0-new node1-get 2>/dev/null || true
 }
 
@@ -61,6 +57,8 @@ extract_from_logs() {
     local pattern=$2
     docker logs $container 2>&1 | grep "$pattern" | cut -d'=' -f2
 }
+
+cleanup
 
 # Phase 1: Start node0 (bootstrap node)
 echo ""

@@ -17,18 +17,19 @@ libp2p-identity = "0.2"
 libp2p-swarm = { version = "0.47", optional = true, features = ["macros"] }
 libp2p-kad = { version = "0.48", optional = true }
 libp2p = { version = "0.56", optional = true, default-features = false }
-tokio = { version = "1", default-features = false, features = ["rt-multi-thread","macros"] }
-tokio-util = { version = "0.7" }
-iroh = { version =  "0.94", default-features = false, features = ["discovery-pkarr-dht"] }
+n0-future = "0.3.0"
+tokio = { version = "1", default-features = false, features = ["rt", "macros"] }
+iroh = { version =  "0.94", default-features = false }
 rand = "0.9"
 
 futures = "0.3"
 futures-timer = "3.0.3"
-actor-helper = { version = "0.2", features = ["tokio"] }
 
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [features]
-default = ["swarm"]
+default = ["swarm", "discovery-pkarr-dht"]
 swarm = ["libp2p-swarm", "libp2p-kad", "libp2p"]
+rt-multi-thread = ["tokio/rt-multi-thread"]
+discovery-pkarr-dht = ["iroh/discovery-pkarr-dht"]

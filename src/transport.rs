@@ -1,8 +1,8 @@
 use std::fmt::Display;
+use std::sync::{Arc, Mutex};
 
-use actor_helper::{Action, Actor, ActorError, Handle, Receiver, act_ok};
 use futures::{FutureExt, future::BoxFuture};
-use iroh::{protocol::ProtocolHandler, EndpointId};
+use iroh::{EndpointId, protocol::ProtocolHandler};
 use libp2p::PeerId;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
@@ -28,18 +28,16 @@ pub struct Transport {
 
 #[derive(Debug, Clone)]
 pub struct Protocol {
-    api: Handle<ProtocolActor, TransportError>,
+    state: Arc<Mutex<ProtocolState>>,
+    endpoint: iroh::Endpoint,
+    transport_tx:
+        UnboundedSender<libp2p_core::transport::TransportEvent<Connecting, TransportError>>,
 }
 
 #[derive(Debug)]
-struct ProtocolActor {
-    rx: Receiver<Action<ProtocolActor>>,
-
+struct ProtocolState {
     listener_id: Option<libp2p_core::transport::ListenerId>,
-    endpoint: iroh::Endpoint,
-    _router: Option<iroh::protocol::Router>,
-    transport_tx:
-        UnboundedSender<libp2p_core::transport::TransportEvent<Connecting, TransportError>>,
+    router: Option<iroh::protocol::Router>,
 }
 
 #[derive(Clone, Debug)]
@@ -119,7 +117,7 @@ impl Transport {
 
         let (waiter_tx, mut waiter_rx) = tokio::sync::mpsc::channel(1);
 
-        tokio::spawn({
+        n0_future::task::spawn({
             let transport_events_tx = transport_events_tx.clone();
             let secret_key = secret_key.clone();
             async move {
@@ -181,43 +179,13 @@ impl Protocol {
         >,
     ) -> Self {
         tracing::debug!("Protocol::new - Creating protocol handler");
-        let (api, rx) = Handle::channel();
-
-        tokio::spawn(async move {
-            tracing::debug!("Protocol::new - Spawned ProtocolActor");
-            let mut actor = ProtocolActor {
-                rx,
-                transport_tx,
-                endpoint,
-                _router: None,
+        Protocol {
+            state: Arc::new(Mutex::new(ProtocolState {
                 listener_id: None,
-            };
-            if let Err(e) = actor.run().await {
-                tracing::error!("TransportProtocolActor error: {e}");
-                eprintln!("TransportProtocolActor error: {e}");
-            }
-        });
-
-        Self { api }
-    }
-}
-
-impl ActorError for TransportError {
-    fn from_actor_message(msg: String) -> Self {
-        TransportError {
-            kind: TransportErrorKind::Listen(msg),
-        }
-    }
-}
-
-impl Actor<TransportError> for ProtocolActor {
-    async fn run(&mut self) -> Result<(), TransportError> {
-        loop {
-            tokio::select! {
-                Ok(action) = self.rx.recv_async() => {
-                    action(self).await;
-                }
-            }
+                router: None,
+            })),
+            endpoint,
+            transport_tx,
         }
     }
 }
@@ -242,34 +210,29 @@ impl libp2p_core::Transport for Transport {
             _addr
         );
         // /iroh/[node-id]
-        let listener_id = self
-            .protocol
-            .api
-            .call_blocking(act_ok!(actor => async move { actor.listener_id }))
-            .map_err(libp2p_core::transport::TransportError::Other)?;
-        if listener_id.is_some() {
-            tracing::warn!("Transport::listen_on - Listener already exists");
+        if let Ok(state) = self.protocol.state.lock() {
+            if state.listener_id.is_some() {
+                tracing::warn!("Transport::listen_on - Listener already exists");
+                return Err(libp2p_core::transport::TransportError::Other(
+                    TransportError {
+                        kind: TransportErrorKind::Listen(
+                            "Listener already exists for this transport".to_string(),
+                        ),
+                    },
+                ));
+            }
+        } else {
+            tracing::error!("Transport::listen_on - Failed to acquire protocol state lock");
             return Err(libp2p_core::transport::TransportError::Other(
                 TransportError {
                     kind: TransportErrorKind::Listen(
-                        "Listener already exists for this transport".to_string(),
+                        "Failed to acquire protocol state lock".to_string(),
                     ),
                 },
             ));
-        }
+        };
 
-        let endpoint = self
-            .protocol
-            .api
-            .call_blocking(act_ok!(actor => async move { actor.endpoint.clone() }))
-            .map_err(|e| {
-                tracing::error!("Transport::listen_on - Failed to get endpoint: {}", e);
-                libp2p_core::transport::TransportError::Other(TransportError {
-                    kind: TransportErrorKind::Listen(format!(
-                        "Failed to get endpoint from transport protocol: {e}"
-                    )),
-                })
-            })?;
+        let endpoint = self.protocol.endpoint.clone();
         tracing::debug!(
             "Transport::listen_on - Creating router with ALPN: {:?}",
             std::str::from_utf8(Protocol::ALPN)
@@ -277,18 +240,20 @@ impl libp2p_core::Transport for Transport {
         let _router = iroh::protocol::Router::builder(endpoint.clone())
             .accept(Protocol::ALPN, self.protocol.clone())
             .spawn();
-        self.protocol
-            .api
-            .call_blocking(act_ok!(actor => async move {
-                actor._router = Some(_router);
-                actor.listener_id = Some(id);
-            }))
-            .map_err(|e| {
-                tracing::error!("Transport::listen_on - Failed to set router: {}", e);
-                libp2p_core::transport::TransportError::Other(TransportError {
-                    kind: TransportErrorKind::Listen(format!("Failed to set router: {e}")),
-                })
-            })?;
+
+        if let Ok(mut state) = self.protocol.state.lock() {
+            state.router = Some(_router);
+            state.listener_id = Some(id);
+        } else {
+            tracing::error!("Transport::listen_on - Failed to acquire protocol state lock");
+            return Err(libp2p_core::transport::TransportError::Other(
+                TransportError {
+                    kind: TransportErrorKind::Listen(
+                        "Failed to acquire protocol state lock".to_string(),
+                    ),
+                },
+            ));
+        }
 
         let iroh_addr = helper::iroh_node_id_to_multiaddr(&self.node_id);
         tracing::debug!(
@@ -314,22 +279,16 @@ impl libp2p_core::Transport for Transport {
     }
 
     fn remove_listener(&mut self, id: libp2p_core::transport::ListenerId) -> bool {
-        let listener_id = self
-            .protocol
-            .api
-            .call_blocking(act_ok!(actor => async move { actor.listener_id }))
-            .map_err(|_| false)
-            .unwrap_or(None);
-        if let Some(current_id) = listener_id {
-            if current_id == id {
-                self.protocol
-                    .api
-                    .call_blocking(act_ok!(actor => async move {
-                        actor.listener_id = None;
-                    }))
-                    .ok();
-                return true;
+        if let Ok(mut state) = self.protocol.state.lock() {
+            if let Some(current_id) = state.listener_id {
+                if current_id == id {
+                    state.listener_id = None;
+                    tracing::debug!("Transport::remove_listener - Listener removed: {:?}", id);
+                    return true;
+                }
             }
+        } else {
+            tracing::error!("Transport::remove_listener - Failed to acquire protocol state lock");
         }
         false
     }
@@ -354,17 +313,7 @@ impl libp2p_core::Transport for Transport {
         tracing::debug!("Transport::dial - Extracted EndpointId: {:?}", node_id);
         let protocol = self.protocol.clone();
 
-        let endpoint = protocol
-            .api
-            .call_blocking(act_ok!(actor => async move { actor.endpoint.clone() }))
-            .map_err(|e| {
-                tracing::error!("Transport::dial - Failed to get endpoint: {}", e);
-                libp2p_core::transport::TransportError::Other(TransportError {
-                    kind: TransportErrorKind::Dial(format!(
-                        "Failed to get endpoint from transport protocol: {e}"
-                    )),
-                })
-            })?;
+        let endpoint = protocol.endpoint.clone();
 
         Ok(async move {
             tracing::debug!(
@@ -384,11 +333,16 @@ impl libp2p_core::Transport for Transport {
             })?;
 
             let peer_id = node_id_to_peerid(&remote_id).ok_or(TransportError {
-                kind: TransportErrorKind::Dial("Failed to convert EndpointId to peerid".to_string()),
+                kind: TransportErrorKind::Dial(
+                    "Failed to convert EndpointId to peerid".to_string(),
+                ),
             })?;
 
             tracing::debug!("Transport::dial - Connection established to {:?}", peer_id);
-            Ok((peer_id, libp2p_core::muxing::StreamMuxerBox::new(Connection::new(conn))))
+            Ok((
+                peer_id,
+                libp2p_core::muxing::StreamMuxerBox::new(Connection::new(conn)),
+            ))
         }
         .boxed())
     }
@@ -422,55 +376,42 @@ impl ProtocolHandler for Protocol {
             ))?;
 
         let remote_multi = helper::iroh_node_id_to_multiaddr(&remote_node_id);
-        let local_multi = helper::iroh_node_id_to_multiaddr(
-            &self
-                .api
-                .call(act_ok!(actor => async move {
-                    actor.endpoint.id()
-                }))
-                .await
-                .map_err(iroh::protocol::AcceptError::from_err)?,
-        );
+        let local_multi = helper::iroh_node_id_to_multiaddr(&self.endpoint.id());
 
         tracing::debug!("Protocol::accept - Remote multiaddr: {}", remote_multi);
         tracing::debug!("Protocol::accept - Local multiaddr: {}", local_multi);
 
-        let listener_id_result = self
-            .api
-            .call(act_ok!(actor => async move {
-                actor.listener_id
-            }))
-            .await
-            .map_err(iroh::protocol::AcceptError::from_err)?;
-
-        let listener_id = listener_id_result.ok_or_else(|| {
-            tracing::error!("Protocol::accept - Listener ID not set");
-            iroh::protocol::AcceptError::from_err(TransportError::from("Listener ID should be set"))
-        })?;
+        let listener_id = if let Ok(state) = self.state.lock() {
+            state.listener_id.ok_or_else(|| {
+                tracing::error!("Protocol::accept - Listener ID not set");
+                iroh::protocol::AcceptError::from_err(TransportError::from("Listener ID should be set"))
+            })?
+        } else {
+            tracing::error!("Protocol::accept - Failed to acquire protocol state lock");
+            return Err(iroh::protocol::AcceptError::from_err(TransportError::from(
+                "Failed to acquire protocol state lock",
+            )));
+        };
 
         tracing::debug!("Protocol::accept - Listener ID: {:?}", listener_id);
 
-        self.api
-            .call(act_ok!(actor => async move {
-                tracing::debug!("Protocol::accept - Sending Incoming transport event");
-               actor.transport_tx.send(
-                   libp2p_core::transport::TransportEvent::Incoming {
-                       listener_id,
-                       upgrade: Connecting {
-                           connecting: async move {
-                               tracing::debug!("Protocol::accept - Connection upgrade resolving");
-                               Ok((peer_id, connection))
-                           }.boxed()
-                       },
-                       local_addr: local_multi.clone(),
-                       send_back_addr: remote_multi.clone(),
-                   }).map_err(|e| {
-                       tracing::error!("Protocol::accept - Failed to send Incoming event: {}", e);
-                       TransportError::from(e.to_string().as_str())
-                   })
-            }))
-            .await
-            .map_err(iroh::protocol::AcceptError::from_err)?
+        self.transport_tx
+            .send(libp2p_core::transport::TransportEvent::Incoming {
+                listener_id,
+                upgrade: Connecting {
+                    connecting: async move {
+                        tracing::debug!("Protocol::accept - Connection upgrade resolving");
+                        Ok((peer_id, connection))
+                    }
+                    .boxed(),
+                },
+                local_addr: local_multi.clone(),
+                send_back_addr: remote_multi.clone(),
+            })
+            .map_err(|e| {
+                tracing::error!("Protocol::accept - Failed to send Incoming event: {}", e);
+                TransportError::from(e.to_string().as_str())
+            })
             .map_err(iroh::protocol::AcceptError::from_err)
     }
 }

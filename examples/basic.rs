@@ -20,7 +20,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let transport = Transport::new(Some(&keypair)).await?.boxed();
 
-    println!("Copy and paste this in a second terminal, press enter to connect back to this node from anywhere:");
+    println!(
+        "Copy and paste this in a second terminal, press enter to connect back to this node from anywhere:"
+    );
     println!("  /p2p/{peer_id}");
 
     let kad_config = libp2p_kad::Config::new(StreamProtocol::new("/example/kad/1.0.0"));
@@ -35,7 +37,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         peer_id,
         libp2p_swarm::Config::with_executor(Box::new(|fut| {
             tokio::spawn(fut);
-        })).with_idle_connection_timeout(std::time::Duration::from_secs(300)),
+        }))
+        .with_idle_connection_timeout(std::time::Duration::from_secs(300)),
     );
 
     // Our listener address looks like this: /p2p/12D3KooWEUowGZ...

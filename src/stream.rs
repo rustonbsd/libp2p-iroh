@@ -47,7 +47,6 @@ impl From<iroh::endpoint::ReadError> for StreamError {
     }
 }
 
-
 impl From<&str> for StreamError {
     fn from(err: &str) -> Self {
         Self {
@@ -109,9 +108,7 @@ impl futures::AsyncRead for Stream {
                 }
                 std::task::Poll::Ready(Err(e)) => {
                     tracing::debug!("Stream::poll_read - Read error: {}", e);
-                    std::task::Poll::Ready(Err(std::io::Error::other(
-                        e,
-                    )))
+                    std::task::Poll::Ready(Err(std::io::Error::other(e)))
                 }
                 std::task::Poll::Pending => std::task::Poll::Pending,
             }
@@ -145,9 +142,7 @@ impl futures::AsyncWrite for Stream {
                     } else {
                         tracing::error!("Stream::poll_write - Write error: {}", e);
                     }
-                    std::task::Poll::Ready(Err(std::io::Error::other(
-                        e,
-                    )))
+                    std::task::Poll::Ready(Err(std::io::Error::other(e)))
                 }
                 std::task::Poll::Pending => std::task::Poll::Pending,
             }
@@ -172,9 +167,7 @@ impl futures::AsyncWrite for Stream {
                 }
                 std::task::Poll::Ready(Err(e)) => {
                     tracing::debug!("Stream::poll_flush - Flush error: {}", e);
-                    std::task::Poll::Ready(Err(std::io::Error::other(
-                        e,
-                    )))
+                    std::task::Poll::Ready(Err(std::io::Error::other(e)))
                 }
                 std::task::Poll::Pending => std::task::Poll::Pending,
             }
@@ -194,7 +187,7 @@ impl futures::AsyncWrite for Stream {
         if !self.closing {
             tracing::debug!("Stream::poll_close - Starting to close stream (write side)");
             self.closing = true;
-            
+
             // Finish the sender to signal we're done writing
             if let Some(mut sender) = self.sender.take() {
                 if let Err(e) = sender.finish() {
