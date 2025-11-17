@@ -8,7 +8,7 @@ homepage = "https://rustonbsd.github.io/"
 readme = "README.md"
 keywords = ["networking"]
 categories = ["network-programming"]
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 
 [dependencies]
@@ -19,7 +19,7 @@ libp2p-kad = { version = "0.48", optional = true }
 libp2p = { version = "0.56", optional = true, default-features = false }
 tokio = { version = "1", default-features = false, features = ["rt-multi-thread","macros"] }
 tokio-util = { version = "0.7" }
-iroh = { version =  "0.94", default-features = false, features = ["discovery-pkarr-dht"] }
+iroh = { version =  "0.95", default-features = false, features = ["discovery-pkarr-dht"] }
 rand = "0.9"
 
 futures = "0.3"
