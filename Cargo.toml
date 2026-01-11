@@ -12,11 +12,7 @@ version = "0.1.1"
 edition = "2024"
 
 [dependencies]
-libp2p-core = "0.43"
-libp2p-identity = "0.2"
-libp2p-swarm = { version = "0.47", optional = true, features = ["macros"] }
-libp2p-kad = { version = "0.48", optional = true }
-libp2p = { version = "0.56", optional = true, default-features = false }
+libp2p = "0.56" 
 tokio = { version = "1", default-features = false, features = ["rt-multi-thread","macros"] }
 tokio-util = { version = "0.7" }
 iroh = { version =  "0.95", default-features = false, features = ["discovery-pkarr-dht"] }
@@ -31,4 +27,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [features]
 default = ["swarm"]
-swarm = ["libp2p-swarm", "libp2p-kad", "libp2p"]
+swarm = ["libp2p/kad", "libp2p/macros"]

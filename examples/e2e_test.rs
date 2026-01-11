@@ -1,8 +1,7 @@
 use futures::StreamExt;
-use libp2p::StreamProtocol;
-use libp2p_core::Multiaddr;
-use libp2p_kad::{Event as KademliaEvent, store::MemoryStore};
-use libp2p_swarm::{NetworkBehaviour, Swarm, SwarmEvent};
+use libp2p::kad::{Event as KademliaEvent, store::MemoryStore};
+use libp2p::swarm::{NetworkBehaviour, Swarm, SwarmEvent};
+use libp2p::{Multiaddr, StreamProtocol};
 use std::env;
 use std::time::Duration;
 
@@ -11,7 +10,7 @@ use libp2p_iroh::TransportTrait;
 
 #[derive(NetworkBehaviour)]
 struct MyBehaviour {
-    kademlia: libp2p_kad::Behaviour<MemoryStore>,
+    kademlia: libp2p::kad::Behaviour<MemoryStore>,
 }
 
 #[tokio::main]
@@ -22,19 +21,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let test_value = env::var("TEST_VALUE").unwrap_or_else(|_| "testvalue".to_string());
     let operation = env::var("OPERATION").unwrap_or_else(|_| "listen".to_string());
 
-    let keypair = libp2p_identity::Keypair::generate_ed25519();
+    let keypair = libp2p::identity::Keypair::generate_ed25519();
     let peer_id = keypair.public().to_peer_id();
 
     let transport = Transport::new(Some(&keypair)).await?.boxed();
 
     println!("NODE_{node_id}_PEER_ID={peer_id}");
 
-    let mut kad_config = libp2p_kad::Config::new(StreamProtocol::new("/e2e-test/kad/1.0.0"));
+    let mut kad_config = libp2p::kad::Config::new(StreamProtocol::new("/e2e-test/kad/1.0.0"));
     kad_config.set_query_timeout(Duration::from_secs(60));
 
     let store = MemoryStore::new(peer_id);
-    let mut kademlia = libp2p_kad::Behaviour::with_config(peer_id, store, kad_config);
-    kademlia.set_mode(Some(libp2p_kad::Mode::Server));
+    let mut kademlia = libp2p::kad::Behaviour::with_config(peer_id, store, kad_config);
+    kademlia.set_mode(Some(libp2p::kad::Mode::Server));
 
     let behaviour = MyBehaviour { kademlia };
 
@@ -42,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         transport,
         behaviour,
         peer_id,
-        libp2p_swarm::Config::with_executor(Box::new(|fut| {
+        libp2p::swarm::Config::with_executor(Box::new(|fut| {
             tokio::spawn(fut);
         }))
         .with_idle_connection_timeout(Duration::from_secs(300)),
@@ -100,13 +99,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 match operation.as_str() {
                                     "put" => {
                                         println!("NODE_{node_id}: Storing key '{test_key}' = '{test_value}'");
-                                        let record = libp2p_kad::Record::new(
+                                        let record = libp2p::kad::Record::new(
                                             test_key.as_bytes().to_vec(),
                                             test_value.as_bytes().to_vec()
                                         );
                                         if let Err(e) = swarm.behaviour_mut().kademlia.put_record(
                                             record,
-                                            libp2p_kad::Quorum::N(std::num::NonZeroUsize::new(2).unwrap())
+                                            libp2p::kad::Quorum::N(std::num::NonZeroUsize::new(2).unwrap())
                                         ) {
                                             eprintln!("NODE_{node_id}: Put failed: {e}");
                                         } else {
@@ -116,7 +115,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     "get" => {
                                         println!("NODE_{node_id}: Getting key '{test_key}'");
                                         swarm.behaviour_mut().kademlia.get_record(
-                                            libp2p_kad::RecordKey::new(&test_key.as_bytes().to_vec())
+                                            libp2p::kad::RecordKey::new(&test_key.as_bytes().to_vec())
                                         );
                                     }
                                     _ => {
@@ -135,26 +134,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                                 KademliaEvent::OutboundQueryProgressed { result, .. } => {
                                     match result {
-                                        libp2p_kad::QueryResult::GetRecord(Ok(
-                                            libp2p_kad::GetRecordOk::FoundRecord(peer_record)
+                                        libp2p::kad::QueryResult::GetRecord(Ok(
+                                            libp2p::kad::GetRecordOk::FoundRecord(peer_record)
                                         )) => {
                                             let key_str = String::from_utf8_lossy(peer_record.record.key.as_ref());
                                             let val_str = String::from_utf8_lossy(&peer_record.record.value);
                                             println!("NODE_{node_id}_FOUND_RECORD: {key_str} = {val_str}");
                                             operation_completed = true;
                                         }
-                                        libp2p_kad::QueryResult::GetRecord(Err(e)) => {
+                                        libp2p::kad::QueryResult::GetRecord(Err(e)) => {
                                             eprintln!("NODE_{node_id}_GET_FAILED: {e:?}");
                                             operation_completed = true;
                                         }
-                                        libp2p_kad::QueryResult::PutRecord(Ok(
-                                            libp2p_kad::PutRecordOk { key }
+                                        libp2p::kad::QueryResult::PutRecord(Ok(
+                                            libp2p::kad::PutRecordOk { key }
                                         )) => {
                                             let key_str = String::from_utf8_lossy(key.as_ref());
                                             println!("NODE_{node_id}_PUT_SUCCESS: {key_str}");
                                             operation_completed = true;
                                         }
-                                        libp2p_kad::QueryResult::PutRecord(Err(e)) => {
+                                        libp2p::kad::QueryResult::PutRecord(Err(e)) => {
                                             eprintln!("NODE_{node_id}_PUT_FAILED: {e:?}");
                                             operation_completed = true;
                                         }

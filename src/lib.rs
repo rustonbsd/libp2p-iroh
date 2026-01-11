@@ -8,4 +8,4 @@ pub use helper::*;
 pub use stream::{Stream, StreamError, StreamErrorKind};
 pub use transport::{Transport, TransportError, TransportErrorKind};
 
-pub use libp2p_core::Transport as TransportTrait;
+pub use libp2p::Transport as TransportTrait;

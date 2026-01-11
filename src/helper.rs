@@ -8,7 +8,7 @@ pub(crate) fn multiaddr_to_iroh_node_id(addr: &Multiaddr) -> Option<EndpointId> 
     );
     // Try to extract node_id from /p2p/ protocol component
     for protocol in addr.iter() {
-        if let libp2p_core::multiaddr::Protocol::P2p(peer_id) = protocol {
+        if let libp2p::multiaddr::Protocol::P2p(peer_id) = protocol {
             tracing::debug!(
                 "helper::multiaddr_to_iroh_node_id - Found P2p protocol with peer_id: {}",
                 peer_id
@@ -32,7 +32,7 @@ pub(crate) fn multiaddr_to_iroh_node_id(addr: &Multiaddr) -> Option<EndpointId> 
     None
 }
 
-pub(crate) fn peer_id_to_node_id(peer_id: &libp2p_core::PeerId) -> Option<EndpointId> {
+pub(crate) fn peer_id_to_node_id(peer_id: &libp2p::PeerId) -> Option<EndpointId> {
     tracing::debug!(
         "helper::peer_id_to_node_id - Converting PeerId: {}",
         peer_id
@@ -68,7 +68,7 @@ pub(crate) fn peer_id_to_node_id(peer_id: &libp2p_core::PeerId) -> Option<Endpoi
 }
 
 pub(crate) fn libp2p_keypair_to_iroh_secret(
-    keypair: &libp2p_identity::Keypair,
+    keypair: &libp2p::identity::Keypair,
 ) -> Option<iroh::SecretKey> {
     if let Ok(ed25519) = keypair.clone().try_into_ed25519() {
         let secret = ed25519.secret();
@@ -84,11 +84,11 @@ pub fn iroh_node_id_to_multiaddr(node_id: &EndpointId) -> Multiaddr {
         node_id
     );
     let mut addr = Multiaddr::empty();
-    addr.push(libp2p_core::multiaddr::Protocol::P2p(
-        libp2p_identity::ed25519::PublicKey::try_from_bytes(node_id.as_bytes())
+    addr.push(libp2p::multiaddr::Protocol::P2p(
+        libp2p::identity::ed25519::PublicKey::try_from_bytes(node_id.as_bytes())
             .map(|pk| {
                 let peer_id =
-                    libp2p_core::PeerId::from_public_key(&libp2p_identity::PublicKey::from(pk));
+                    libp2p::PeerId::from_public_key(&libp2p::identity::PublicKey::from(pk));
                 tracing::debug!(
                     "helper::iroh_node_id_to_multiaddr - Converted to PeerId: {}",
                     peer_id
@@ -108,9 +108,9 @@ pub fn iroh_node_id_to_multiaddr(node_id: &EndpointId) -> Multiaddr {
 pub fn node_id_to_peerid(node_id: &EndpointId) -> Option<libp2p::PeerId> {
     let pubkey_bytes = node_id.to_vec();
     let libp2p_pubkey =
-        libp2p_identity::ed25519::PublicKey::try_from_bytes(pubkey_bytes.as_slice()).ok()?;
+        libp2p::identity::ed25519::PublicKey::try_from_bytes(pubkey_bytes.as_slice()).ok()?;
 
-    Some(libp2p_core::PeerId::from_public_key(
-        &libp2p_identity::PublicKey::from(libp2p_pubkey),
+    Some(libp2p::PeerId::from_public_key(
+        &libp2p::identity::PublicKey::from(libp2p_pubkey),
     ))
 }
