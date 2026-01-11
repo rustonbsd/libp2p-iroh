@@ -107,7 +107,8 @@ pub fn iroh_node_id_to_multiaddr(node_id: &EndpointId) -> Multiaddr {
 
 pub fn node_id_to_peerid(node_id: &EndpointId) -> Option<libp2p::PeerId> {
     let pubkey_bytes = node_id.to_vec();
-    let libp2p_pubkey = libp2p_identity::ed25519::PublicKey::try_from_bytes(pubkey_bytes.as_slice()).ok()?;
+    let libp2p_pubkey =
+        libp2p_identity::ed25519::PublicKey::try_from_bytes(pubkey_bytes.as_slice()).ok()?;
 
     Some(libp2p_core::PeerId::from_public_key(
         &libp2p_identity::PublicKey::from(libp2p_pubkey),

@@ -9,7 +9,6 @@ use std::time::Duration;
 use libp2p_iroh::Transport;
 use libp2p_iroh::TransportTrait;
 
-
 #[derive(NetworkBehaviour)]
 struct MyBehaviour {
     kademlia: libp2p_kad::Behaviour<MemoryStore>,
@@ -26,15 +25,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let keypair = libp2p_identity::Keypair::generate_ed25519();
     let peer_id = keypair.public().to_peer_id();
 
-    let transport = Transport::new(Some(&keypair))
-        .await?
-        .boxed();
+    let transport = Transport::new(Some(&keypair)).await?.boxed();
 
     println!("NODE_{node_id}_PEER_ID={peer_id}");
 
     let mut kad_config = libp2p_kad::Config::new(StreamProtocol::new("/e2e-test/kad/1.0.0"));
     kad_config.set_query_timeout(Duration::from_secs(60));
-    
+
     let store = MemoryStore::new(peer_id);
     let mut kademlia = libp2p_kad::Behaviour::with_config(peer_id, store, kad_config);
     kademlia.set_mode(Some(libp2p_kad::Mode::Server));
@@ -99,7 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                             if bootstrap_peer.is_some() && !connected_to_bootstrap {
                                 connected_to_bootstrap = true;
-                                
+
                                 match operation.as_str() {
                                     "put" => {
                                         println!("NODE_{node_id}: Storing key '{test_key}' = '{test_value}'");

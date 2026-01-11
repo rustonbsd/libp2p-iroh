@@ -4,13 +4,8 @@ use crate::{
     TransportError,
     stream::{Stream, StreamError},
 };
-use futures::{
-    FutureExt,
-    future::BoxFuture,
-};
-use iroh::
-    endpoint::{RecvStream, SendStream}
-;
+use futures::{FutureExt, future::BoxFuture};
+use iroh::endpoint::{RecvStream, SendStream};
 use libp2p_core::StreamMuxer;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -66,7 +61,8 @@ pub struct Connection {
 }
 
 pub struct Connecting {
-    pub connecting: BoxFuture<'static, Result<(libp2p::PeerId, iroh::endpoint::Connection), TransportError>>,
+    pub connecting:
+        BoxFuture<'static, Result<(libp2p::PeerId, iroh::endpoint::Connection), TransportError>>,
 }
 
 impl Connection {
@@ -94,7 +90,7 @@ impl StreamMuxer for Connection {
         let incoming = this.incoming.get_or_insert_with(|| {
             tracing::debug!("Connection::poll_inbound - Setting up incoming stream future");
             let connection = this.connection.clone();
-            async move { 
+            async move {
                 tracing::debug!("Connection::poll_inbound - Accepting bidirectional stream");
                 match connection.accept_bi().await {
                     Ok((s, mut r)) => {
@@ -129,7 +125,7 @@ impl StreamMuxer for Connection {
         let outgoing = this.outgoing.get_or_insert_with(|| {
             tracing::debug!("Connection::poll_outbound - Setting up outgoing stream future");
             let connection = this.connection.clone();
-            async move { 
+            async move {
                 tracing::debug!("Connection::poll_outbound - Opening bidirectional stream");
                 match connection.open_bi().await {
                     Ok((mut s, r)) => {
@@ -152,7 +148,9 @@ impl StreamMuxer for Connection {
 
         let (send, recv) = futures::ready!(outgoing.poll_unpin(cx))?;
         this.outgoing.take();
-        tracing::debug!("Connection::poll_outbound - Outbound stream ready, creating Stream wrapper");
+        tracing::debug!(
+            "Connection::poll_outbound - Outbound stream ready, creating Stream wrapper"
+        );
         Poll::Ready(Stream::new(send, recv).map_err(Into::into))
     }
 
@@ -166,12 +164,12 @@ impl StreamMuxer for Connection {
             tracing::debug!("Connection::poll_close - Closing connection");
             this.connection.close(From::from(0u32), &[]);
             let connection = this.connection.clone();
-            async move { 
+            async move {
                 tracing::debug!("Connection::poll_close - Waiting for connection to close");
-                connection.closed().await.into() 
-            }.boxed()
+                connection.closed().await.into()
+            }
+            .boxed()
         });
-
 
         if matches!(
             futures::ready!(closing.poll_unpin(cx)),
@@ -202,11 +200,11 @@ impl Future for Connecting {
             Poll::Ready(Ok((peer_id, conn))) => {
                 tracing::debug!("Connecting::poll - Connection established");
                 (peer_id, conn)
-            },
+            }
             Poll::Ready(Err(e)) => {
                 tracing::error!("Connecting::poll - Connection failed: {}", e);
                 return Poll::Ready(Err(e));
-            },
+            }
             Poll::Pending => {
                 tracing::trace!("Connecting::poll - Connection still pending");
                 return Poll::Pending;
@@ -216,6 +214,9 @@ impl Future for Connecting {
         let muxer = Connection::new(conn);
 
         tracing::debug!("Connecting::poll - Connection muxer created");
-        Poll::Ready(Ok((peer_id, libp2p_core::muxing::StreamMuxerBox::new(muxer))))
+        Poll::Ready(Ok((
+            peer_id,
+            libp2p_core::muxing::StreamMuxerBox::new(muxer),
+        )))
     }
 }

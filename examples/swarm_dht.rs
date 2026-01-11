@@ -16,17 +16,16 @@ struct MyBehaviour {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("libp2p_iroh=warn,swarm_dht=warn")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("libp2p_iroh=warn,swarm_dht=warn")
+            }),
         )
         .init();
 
     let keypair = libp2p_identity::Keypair::generate_ed25519();
     let peer_id = keypair.public().to_peer_id();
 
-    let transport = libp2p_iroh::Transport::new(Some(&keypair))
-        .await?
-        .boxed();
+    let transport = libp2p_iroh::Transport::new(Some(&keypair)).await?.boxed();
 
     println!("Local Peer ID: {peer_id}");
 
@@ -146,31 +145,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Some(cmd) = rx.recv() => {
                 let parts: Vec<&str> = cmd.split_whitespace().collect();
-                
+
                 if cmd == "peers" {
                     let mut peer_count = 0;
                     println!("Known peers in routing table:");
-                    
+
                     for kbucket in swarm.behaviour_mut().kademlia.kbuckets() {
                         for entry in kbucket.iter() {
                             peer_count += 1;
                             let peer_id = entry.node.key.preimage();
                             let status = entry.status;
                             println!("  {peer_id} (status: {status:?})");
-                            
+
                             // Show addresses for this peer
                             for addr in entry.node.value.iter() {
                                 println!("    └─ {addr}");
                             }
                         }
                     }
-                    
+
                     if peer_count == 0 {
                         println!("  No peers in routing table");
                     } else {
                         println!("Total peers: {peer_count}");
                     }
-                    
+
                     // Also show connected peers
                     let connected: Vec<_> = swarm.connected_peers().collect();
                     println!("\nCurrently connected peers: {}", connected.len());
@@ -186,7 +185,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let key = parts[1].as_bytes().to_vec();
                     let value = parts[2].as_bytes().to_vec();
                     let record = libp2p_kad::Record::new(key.clone(), value);
-                    
+
                     match swarm.behaviour_mut().kademlia.put_record(record, libp2p_kad::Quorum::One) {
                         Ok(_) => {
                             let key_str = String::from_utf8_lossy(&key);
@@ -209,5 +208,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 }
-
-
