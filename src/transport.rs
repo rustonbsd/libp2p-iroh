@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use actor_helper::{Action, Actor, ActorError, Handle, Receiver, act_ok};
 use futures::{FutureExt, future::BoxFuture};
-use iroh::{protocol::ProtocolHandler, EndpointId};
+use iroh::{EndpointId, protocol::ProtocolHandler};
 use libp2p::PeerId;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
@@ -379,16 +379,19 @@ impl libp2p_core::Transport for Transport {
                     kind: TransportErrorKind::Dial(e.to_string()),
                 }
             })?;
-            let remote_id = conn.remote_id().map_err(|e| TransportError {
-                kind: TransportErrorKind::Dial(e.to_string()),
-            })?;
+            let remote_id = conn.remote_id();
 
             let peer_id = node_id_to_peerid(&remote_id).ok_or(TransportError {
-                kind: TransportErrorKind::Dial("Failed to convert EndpointId to peerid".to_string()),
+                kind: TransportErrorKind::Dial(
+                    "Failed to convert EndpointId to peerid".to_string(),
+                ),
             })?;
 
             tracing::debug!("Transport::dial - Connection established to {:?}", peer_id);
-            Ok((peer_id, libp2p_core::muxing::StreamMuxerBox::new(Connection::new(conn))))
+            Ok((
+                peer_id,
+                libp2p_core::muxing::StreamMuxerBox::new(Connection::new(conn)),
+            ))
         }
         .boxed())
     }
@@ -413,7 +416,7 @@ impl ProtocolHandler for Protocol {
         connection: iroh::endpoint::Connection,
     ) -> Result<(), iroh::protocol::AcceptError> {
         tracing::debug!("Protocol::accept - Accepting incoming connection");
-        let remote_node_id = connection.remote_id()?;
+        let remote_node_id = connection.remote_id();
         tracing::debug!("Protocol::accept - Remote node ID: {:?}", remote_node_id);
 
         let peer_id =
