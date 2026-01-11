@@ -1,15 +1,14 @@
 use futures::StreamExt;
-use libp2p::StreamProtocol;
-use libp2p_core::{Multiaddr, Transport as CoreTransport};
-use libp2p_kad::{Event as KademliaEvent, store::MemoryStore};
-use libp2p_swarm::{NetworkBehaviour, Swarm, SwarmEvent};
+use libp2p::kad::{Event as KademliaEvent, store::MemoryStore};
+use libp2p::swarm::{NetworkBehaviour, Swarm, SwarmEvent};
+use libp2p::{Multiaddr, StreamProtocol};
 use std::io::{self, BufRead, Write};
 use std::str::FromStr;
 use std::time::Duration;
 
 #[derive(NetworkBehaviour)]
 struct MyBehaviour {
-    kademlia: libp2p_kad::Behaviour<MemoryStore>,
+    kademlia: libp2p::kad::Behaviour<MemoryStore>,
 }
 
 #[tokio::main]
@@ -22,20 +21,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    let keypair = libp2p_identity::Keypair::generate_ed25519();
+    let keypair = libp2p::identity::Keypair::generate_ed25519();
     let peer_id = keypair.public().to_peer_id();
 
     let transport = libp2p_iroh::Transport::new(Some(&keypair)).await?.boxed();
 
     println!("Local Peer ID: {peer_id}");
 
-    let mut kad_config = libp2p_kad::Config::new(StreamProtocol::new("/example/kad/1.0.0"));
+    let mut kad_config = libp2p::kad::Config::new(StreamProtocol::new("/example/kad/1.0.0"));
     kad_config.set_query_timeout(Duration::from_secs(60));
 
     let store = MemoryStore::new(peer_id);
-    let mut kademlia = libp2p_kad::Behaviour::with_config(peer_id, store, kad_config);
+    let mut kademlia = libp2p::kad::Behaviour::with_config(peer_id, store, kad_config);
 
-    kademlia.set_mode(Some(libp2p_kad::Mode::Server));
+    kademlia.set_mode(Some(libp2p::kad::Mode::Server));
 
     let behaviour = MyBehaviour { kademlia };
 
@@ -43,7 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         transport,
         behaviour,
         peer_id,
-        libp2p_swarm::Config::with_executor(Box::new(|fut| {
+        libp2p::swarm::Config::with_executor(Box::new(|fut| {
             tokio::spawn(fut);
         }))
         .with_idle_connection_timeout(Duration::from_secs(300)),
@@ -94,25 +93,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                                 KademliaEvent::OutboundQueryProgressed { result, .. } => {
                                     match result {
-                                        libp2p_kad::QueryResult::GetRecord(Ok(libp2p_kad::GetRecordOk::FoundRecord(peer_record))) => {
+                                        libp2p::kad::QueryResult::GetRecord(Ok(libp2p::kad::GetRecordOk::FoundRecord(peer_record))) => {
                                             let key_str = String::from_utf8_lossy(peer_record.record.key.as_ref());
                                             let val_str = String::from_utf8_lossy(&peer_record.record.value);
                                             println!("Found record: {key_str} = {val_str}");
                                         }
-                                        libp2p_kad::QueryResult::GetRecord(Err(e)) => {
+                                        libp2p::kad::QueryResult::GetRecord(Err(e)) => {
                                             eprintln!("Get record failed: {e:?}");
                                         }
-                                        libp2p_kad::QueryResult::PutRecord(Ok(libp2p_kad::PutRecordOk { key })) => {
+                                        libp2p::kad::QueryResult::PutRecord(Ok(libp2p::kad::PutRecordOk { key })) => {
                                             let key_str = String::from_utf8_lossy(key.as_ref());
                                             println!("Successfully stored key '{key_str}' in DHT");
                                         }
-                                        libp2p_kad::QueryResult::PutRecord(Err(e)) => {
+                                        libp2p::kad::QueryResult::PutRecord(Err(e)) => {
                                             eprintln!("Put record failed: {e:?}");
                                         }
-                                        libp2p_kad::QueryResult::Bootstrap(Ok(libp2p_kad::BootstrapOk { peer, num_remaining })) => {
+                                        libp2p::kad::QueryResult::Bootstrap(Ok(libp2p::kad::BootstrapOk { peer, num_remaining })) => {
                                             println!("Bootstrap progress: {peer}, {num_remaining} remaining");
                                         }
-                                        libp2p_kad::QueryResult::Bootstrap(Err(e)) => {
+                                        libp2p::kad::QueryResult::Bootstrap(Err(e)) => {
                                             eprintln!("Bootstrap failed: {e:?}");
                                         }
                                         _ => {
@@ -180,13 +179,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let key = parts[1].as_bytes().to_vec();
                     let key_str = String::from_utf8_lossy(&key);
                     println!("Looking up key '{key_str}' in DHT...");
-                    swarm.behaviour_mut().kademlia.get_record(libp2p_kad::RecordKey::new(&key));
+                    swarm.behaviour_mut().kademlia.get_record(libp2p::kad::RecordKey::new(&key));
                 } else if parts.len() == 3 && parts[0] == "put" {
                     let key = parts[1].as_bytes().to_vec();
                     let value = parts[2].as_bytes().to_vec();
-                    let record = libp2p_kad::Record::new(key.clone(), value);
+                    let record = libp2p::kad::Record::new(key.clone(), value);
 
-                    match swarm.behaviour_mut().kademlia.put_record(record, libp2p_kad::Quorum::One) {
+                    match swarm.behaviour_mut().kademlia.put_record(record, libp2p::kad::Quorum::One) {
                         Ok(_) => {
                             let key_str = String::from_utf8_lossy(&key);
                             println!("Storing key '{key_str}' in DHT");
