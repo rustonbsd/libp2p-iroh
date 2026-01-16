@@ -6,6 +6,8 @@ use std::io::{self, BufRead, Write};
 use std::str::FromStr;
 use std::time::Duration;
 
+use libp2p::Transport;
+
 #[derive(NetworkBehaviour)]
 struct MyBehaviour {
     kademlia: libp2p::kad::Behaviour<MemoryStore>,
