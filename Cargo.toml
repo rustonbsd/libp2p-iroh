@@ -8,18 +8,18 @@ homepage = "https://rustonbsd.github.io/"
 readme = "README.md"
 keywords = ["networking"]
 categories = ["network-programming"]
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 
 [dependencies]
 libp2p = "0.56" 
 tokio = { version = "1", default-features = false, features = ["rt-multi-thread","macros"] }
 tokio-util = { version = "0.7" }
-iroh = { version =  "0.95", default-features = false, features = ["discovery-pkarr-dht"] }
+iroh = { version =  "0.97", default-features = false }
 rand = "0.9"
 
 futures = "0.3"
-futures-timer = "3.0.3"
+futures-timer = "3"
 actor-helper = { version = "0.2", features = ["tokio"] }
 
 tracing = { version = "0.1", default-features = false, features = ["std"] }

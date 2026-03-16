@@ -126,7 +126,7 @@ impl Transport {
             let secret_key = secret_key.clone();
             async move {
                 tracing::debug!("Transport::new - Spawned task: Initializing iroh endpoint");
-                if let Ok(endpoint) = iroh::Endpoint::builder()
+                if let Ok(endpoint) = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
                     .secret_key(secret_key)
                     .bind()
                     .await
@@ -322,8 +322,8 @@ impl libp2p::Transport for Transport {
             .call_blocking(act_ok!(actor => async move { actor.listener_id }))
             .map_err(|_| false)
             .unwrap_or(None);
-        if let Some(current_id) = listener_id {
-            if current_id == id {
+        if let Some(current_id) = listener_id
+            && current_id == id {
                 self.protocol
                     .api
                     .call_blocking(act_ok!(actor => async move {
@@ -332,7 +332,6 @@ impl libp2p::Transport for Transport {
                     .ok();
                 return true;
             }
-        }
         false
     }
 

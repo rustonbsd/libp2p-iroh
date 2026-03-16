@@ -47,11 +47,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         print!("> ");
         let mut stdin = std::io::stdin().lock();
         let mut line = String::new();
-        if std::io::BufRead::read_line(&mut stdin, &mut line).is_ok() && !line.is_empty() {
-            if let Ok(peer_multiaddr) = line.trim().parse::<Multiaddr>() {
-                tx.send(peer_multiaddr).unwrap();
-            };
-        }
+        if std::io::BufRead::read_line(&mut stdin, &mut line).is_ok()
+            && !line.is_empty()
+            && let Ok(peer_multiaddr) = line.trim().parse::<Multiaddr>()
+        {
+            tx.send(peer_multiaddr).unwrap();
+        };
     });
 
     loop {
