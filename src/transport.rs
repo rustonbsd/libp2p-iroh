@@ -1,9 +1,10 @@
 use std::fmt::Display;
 
-use actor_helper::{Action, Actor, ActorError, Handle, Receiver, act_ok};
+use actor_helper::{ActorError, Handle, act_ok};
 use futures::{FutureExt, future::BoxFuture};
 use iroh::{EndpointId, protocol::ProtocolHandler};
 use libp2p::PeerId;
+use rand::RngExt;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::{
@@ -33,8 +34,6 @@ pub struct Protocol {
 
 #[derive(Debug)]
 struct ProtocolActor {
-    rx: Receiver<Action<ProtocolActor>>,
-
     listener_id: Option<libp2p::core::transport::ListenerId>,
     endpoint: iroh::Endpoint,
     _router: Option<iroh::protocol::Router>,
@@ -98,7 +97,8 @@ impl Transport {
             (sk, pid)
         } else {
             tracing::debug!("Transport::new - Generating new keypair");
-            let sk = iroh::SecretKey::generate(&mut rand::rng());
+            let mut rng = rand::rng();
+            let sk = iroh::SecretKey::from_bytes(&rng.random());
             let node_id = sk.public();
             let node_id_bytes = node_id.as_bytes();
             let ed25519_pubkey = libp2p::identity::ed25519::PublicKey::try_from_bytes(
@@ -183,21 +183,11 @@ impl Protocol {
         >,
     ) -> Self {
         tracing::debug!("Protocol::new - Creating protocol handler");
-        let (api, rx) = Handle::channel();
-
-        tokio::spawn(async move {
-            tracing::debug!("Protocol::new - Spawned ProtocolActor");
-            let mut actor = ProtocolActor {
-                rx,
-                transport_tx,
-                endpoint,
-                _router: None,
-                listener_id: None,
-            };
-            if let Err(e) = actor.run().await {
-                tracing::error!("TransportProtocolActor error: {e}");
-                eprintln!("TransportProtocolActor error: {e}");
-            }
+        let (api, _join_handle) = Handle::spawn(ProtocolActor {
+            transport_tx,
+            endpoint,
+            _router: None,
+            listener_id: None,
         });
 
         Self { api }
@@ -208,18 +198,6 @@ impl ActorError for TransportError {
     fn from_actor_message(msg: String) -> Self {
         TransportError {
             kind: TransportErrorKind::Listen(msg),
-        }
-    }
-}
-
-impl Actor<TransportError> for ProtocolActor {
-    async fn run(&mut self) -> Result<(), TransportError> {
-        loop {
-            tokio::select! {
-                Ok(action) = self.rx.recv_async() => {
-                    action(self).await;
-                }
-            }
         }
     }
 }
@@ -323,15 +301,16 @@ impl libp2p::Transport for Transport {
             .map_err(|_| false)
             .unwrap_or(None);
         if let Some(current_id) = listener_id
-            && current_id == id {
-                self.protocol
-                    .api
-                    .call_blocking(act_ok!(actor => async move {
-                        actor.listener_id = None;
-                    }))
-                    .ok();
-                return true;
-            }
+            && current_id == id
+        {
+            self.protocol
+                .api
+                .call_blocking(act_ok!(actor => async move {
+                    actor.listener_id = None;
+                }))
+                .ok();
+            return true;
+        }
         false
     }
 
